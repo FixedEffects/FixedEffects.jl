@@ -82,7 +82,13 @@ function solve_coefficients!(b::Vector{Float64}, fep::FixedEffectProblem; kwargs
         components = connectedcomponent(view(get_fes(fep), findintercept))
         rescale!(x, fep, findintercept, components)
     end
-    return x, iterations, converged
+
+    fes = get_fes(fep)
+    newfes = [zeros(length(b)) for j in 1:length(fes)]
+    for j in 1:length(fes)
+        newfes[j] = x[j][fes[j].refs]
+    end
+    return newfes, iterations, converged
 end
 
 

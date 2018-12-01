@@ -78,11 +78,7 @@ function solve_coefficients!(y, fes::Vector{<: FixedEffect}; w = Ones{Float64}(l
     fep = FixedEffectProblem(fes, sqrtw, Val{method})
 
     y .= y .* sqrtw
-    fev, iteration, converged = solve_coefficients!(y, fep; maxiter = maxiter, tol = tol)
-    newfes = [zeros(length(y)) for j in 1:length(fes)]
-    for j in 1:length(fes)
-        newfes[j] = fev[j][fes[j].refs]
-    end
+    newfes, iteration, converged = solve_coefficients!(y, fep; maxiter = maxiter, tol = tol)
     return newfes, iteration, converged
 end
 
