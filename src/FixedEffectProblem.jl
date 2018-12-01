@@ -13,7 +13,7 @@ struct FixedEffect{R <: Integer, I <: AbstractVector{Float64}}
 end
 
 function FixedEffect(x::AbstractVector, interaction::AbstractVector = Ones{Float64}(length(x)))
-    FixedEffect(categorical(x), interaction, length(x.pool))
+    FixedEffect(categorical(x), interaction)
 end
 
 function FixedEffect(x::CategoricalVector, interaction::AbstractVector = Ones{Float64}(length(x)))
@@ -43,7 +43,6 @@ abstract type FixedEffectProblem end
 ##############################################################################
 
 function partial_out!(X::Union{AbstractVector{Float64}, AbstractMatrix{Float64}}, fep::FixedEffectProblem, iterationsv::Vector{Int}, convergedv::Vector{Bool}; kwargs...)
-    X .= X .* fep.sqrtw
     for j in 1:size(X, 2)
         r, iterations, converged = solve_residuals!(fep, view(X, :, j); kwargs...)
         push!(iterationsv, iterations)
@@ -91,7 +90,7 @@ function getfe!(fep::FixedEffectProblem, b::Vector{Float64}; kwargs...)
 end
 
 
-function connectedcomponent(fes::AbstractVector{FixedEffect})
+function connectedcomponent(fes::AbstractVector{<:FixedEffect})
     # initialize
     where = initialize_where(fes)
     refs = initialize_refs(fes)
@@ -109,7 +108,7 @@ function connectedcomponent(fes::AbstractVector{FixedEffect})
     return components
 end
 
-function initialize_where(fes::AbstractVector{FixedEffect})
+function initialize_where(fes::AbstractVector{<:FixedEffect})
     where = Vector{Set{Int}}[]
     for j in 1:length(fes)
         fe = fes[j]
@@ -122,7 +121,7 @@ function initialize_where(fes::AbstractVector{FixedEffect})
     return where
 end
 
-function initialize_refs(fes::AbstractVector{FixedEffect})
+function initialize_refs(fes::AbstractVector{<:FixedEffect})
     nobs = length(fes[1].refs)
     refs = fill(zero(Int), length(fes), nobs)
     for j in 1:length(fes)

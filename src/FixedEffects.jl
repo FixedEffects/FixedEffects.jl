@@ -1,5 +1,5 @@
 
-module FixedEffectModels
+module FixedEffects
 
 ##############################################################################
 ##
@@ -23,9 +23,9 @@ import CategoricalArrays: CategoricalArray, CategoricalVector, compress, categor
 ##############################################################################
 
 export group, 
+FixedEffect,
 partial_out!,
-getfe!,
-FixedEffect
+getfe!
 
 
 ##############################################################################
@@ -33,6 +33,8 @@ FixedEffect
 ## Load files
 ##
 ##############################################################################
+include("utils/group.jl")
+
 include("utils/lsmr.jl")
 include("utils/Ones.jl")
 include("FixedEffectProblem.jl")

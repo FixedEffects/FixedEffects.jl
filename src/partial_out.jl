@@ -65,17 +65,18 @@ using FixedEffects
 p1 = repeat(1:5, inner = 2)
 p2 = repeat(1:5, outer = 2)
 X = rand(10)
-getfe(b, [FixedEffect(p1), FixedEffect(p2)])
+getfe!(b, [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
 
-function getfe(b::Union{AbstractVector{Float64}, AbstractMatrix{Float64}}, fes::Vector{<: FixedEffect}; maxiter::Integer = 10000, tol::Real = 1e-8, method::Symbol = :lsmr)
+function getfe!(b::Union{AbstractVector{Float64}, AbstractMatrix{Float64}}, fes::Vector{<: FixedEffect}; maxiter::Integer = 10000, tol::Real = 1e-8, method::Symbol = :lsmr)
     fep = FixedEffectProblem(fes, Ones{Float64}(length(b)), Val{method})
     fev, iterations, converged = getfe!(fep, b)
-    newfes = similar(fes)
+    newfes = zeros(length(b), length(fes))
     for j in 1:length(fes)
-        newfes[j] = fev[j][fes[j].refs]
+        newfes[:, j] = fev[j][fes[j].refs]
     end
+    return newfes, iterations, converged
 end
 
 
