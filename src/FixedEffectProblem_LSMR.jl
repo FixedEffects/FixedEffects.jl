@@ -199,13 +199,13 @@ function solve!(fep::LSMRFixedEffectProblem, r::AbstractVector{Float64};
     return div(ch.mvps, 2), ch.isconverged
 end
 
-function solve_residuals!(fep::LSMRFixedEffectProblem, r::AbstractVector{Float64}; kwargs...)
+function solve_residuals!(r::AbstractVector{Float64}, fep::LSMRFixedEffectProblem; kwargs...)
     iterations, converged = solve!(fep, r; kwargs...)
     mul!(r, fep.m, fep.x, -1.0, 1.0)
     return r, iterations, converged
 end
 
-function solve_coefficients!(fep::LSMRFixedEffectProblem, r::AbstractVector{Float64}; kwargs...)
+function _solve_coefficients!(r::AbstractVector{Float64}, fep::LSMRFixedEffectProblem; kwargs...)
     iterations, converged = solve!(fep, r; kwargs...)
     for i in 1:length(fep.x._)
         fep.x._[i] .= fep.x._[i] .* fep.m.scale[i]
@@ -231,23 +231,24 @@ FixedEffectProblem(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val
 get_fes(fep::LSMRParallelFixedEffectProblem) = fep.fes
 
 
-function residualize!(X::Union{AbstractVector{Float64}, Matrix{Float64}}, fep::LSMRParallelFixedEffectProblem, iterationsv::Vector{Int}, convergedv::Vector{Bool}; kwargs...)
-    # parallel
-    result = pmap(x -> solve_residuals!(fep, x ;kwargs...), [X[:, j] for j in 1:size(X, 2)])
+function solve_residuals!(X::AbstractMatrix{Float64}, fep::LSMRParallelFixedEffectProblem; kwargs...)
+    iterations = Vector{Int}(undef, size(X, 2))
+    convergeds = Vector{Bool}(undef, size(X, 2))
+    result = pmap(x -> solve_residuals!(x, fep;kwargs...), [X[:, j] for j in 1:size(X, 2)])
     for j in 1:size(X, 2)
         X[:, j] = result[j][1]
-        push!(iterationsv, result[j][2])
-        push!(convergedv, result[j][3])
+        iterations[j] =  result[j][2]
+        convergeds[j] = result[j][3]
     end
+    return X, iterations, convergeds
 end
 
-function solve_residuals!(fep::LSMRParallelFixedEffectProblem, r::AbstractVector{Float64}; kwargs...)
-    newfep = FixedEffectProblem(fep.fes, fep.sqrtw, Val{:lsmr})
-    result = solve_residuals!(newfep, r; kwargs...)
-    result
+function solve_residuals!(r::AbstractVector{Float64}, fep::LSMRParallelFixedEffectProblem; kwargs...)
+    solve_residuals!(r, FixedEffectProblem(fep.fes, fep.sqrtw, Val{:lsmr}); kwargs...)
 end
-function solve_coefficients!(fep::LSMRParallelFixedEffectProblem, r::AbstractVector{Float64}; kwargs...)
-    solve_coefficients!(FixedEffectProblem(fep.fes, fep.sqrtw, Val{:lsmr}), r; kwargs...)
+
+function _solve_coefficients!(r::AbstractVector{Float64}, fep::LSMRParallelFixedEffectProblem, ; kwargs...)
+    _solve_coefficients!(r, FixedEffectProblem(fep.fes, fep.sqrtw, Val{:lsmr}); kwargs...)
 end
 
 
@@ -268,23 +269,21 @@ FixedEffectProblem(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val
 get_fes(fep::LSMRThreadslFixedEffectProblem) = fep.fes
 
 
-function residualize!(X::Union{AbstractVector{Float64}, Matrix{Float64}}, fep::LSMRThreadslFixedEffectProblem, iterationsv::Vector{Int}, convergedv::Vector{Bool}; kwargs...)
-   iterations_X = Vector{Int}(undef, size(X, 2))
-   converged_X = Vector{Bool}(undef, size(X, 2))
+function solve_residuals!(X::AbstractMatrix{Float64}, fep::LSMRThreadslFixedEffectProblem; kwargs...)
+   iterations = Vector{Int}(undef, size(X, 2))
+   convergeds = Vector{Bool}(undef, size(X, 2))
    Threads.@threads for j in 1:size(X, 2)
-        r, iterations, converged = solve_residuals!(fep, view(X, :, j); kwargs...)
-        iterations_X[j] = iterations
-        converged_X[j] = converged
+        r, iteration, converged = solve_residuals!(view(X, :, j), fep; kwargs...)
+        iterations[j] = iteration
+        convergeds[j] = converged
    end
-   append!(iterationsv, iterations_X)
-   append!(convergedv, converged_X)
+   return X, iterations, convergeds
 end
 
-function solve_residuals!(fep::LSMRThreadslFixedEffectProblem, r::AbstractVector{Float64}; kwargs...)
-    solve_residuals!(FixedEffectProblem(fep.fes, fep.sqrtw, Val{:lsmr}), r; kwargs...)
-
+function solve_residuals!( r::AbstractVector{Float64}, fep::LSMRThreadslFixedEffectProblem; kwargs...)
+    solve_residuals!(r, FixedEffectProblem(fep.fes, fep.sqrtw, Val{:lsmr}); kwargs...)
 end
-function solve_coefficients!(fep::LSMRThreadslFixedEffectProblem, r::AbstractVector{Float64}; kwargs...)
-    solve_coefficients!(FixedEffectProblem(fep.fes, fep.sqrtw, Val{:lsmr}), r; kwargs...)
+function _solve_coefficients!(r::AbstractVector{Float64}, fep::LSMRThreadslFixedEffectProblem; kwargs...)
+    _solve_coefficients!(r, FixedEffectProblem(fep.fes, fep.sqrtw, Val{:lsmr}); kwargs...)
 end
 

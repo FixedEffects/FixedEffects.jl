@@ -23,9 +23,11 @@ import CategoricalArrays: CategoricalArray, CategoricalVector, compress, categor
 ##############################################################################
 
 export group, 
+Ones,
 FixedEffect,
-partial_out!,
-getfe!
+FixedEffectProblem,
+solve_residuals!,
+solve_coefficients!
 
 
 ##############################################################################
@@ -34,7 +36,6 @@ getfe!
 ##
 ##############################################################################
 include("utils/group.jl")
-
 include("utils/lsmr.jl")
 include("utils/Ones.jl")
 include("FixedEffectProblem.jl")
@@ -42,7 +43,7 @@ include("FixedEffectProblem_LSMR.jl")
 if Base.USE_GPL_LIBS
     include("FixedEffectProblem_Factorization.jl")
 end
-include("partial_out.jl")
+include("solve.jl")
 
 
 

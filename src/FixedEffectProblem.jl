@@ -30,7 +30,7 @@ getindex(x::FixedEffect, idx) = FixedEffect(x.refs[idx], x.interaction[idx], x.n
 ## A FixedEffectProblem must define three methods:
 ##
 ## solve_residuals! 
-## solve_coefficients!
+## _solve_coefficients!
 ## 
 ##############################################################################
 
@@ -42,20 +42,16 @@ abstract type FixedEffectProblem end
 ##
 ##############################################################################
 
-function partial_out!(X::Union{AbstractVector{Float64}, AbstractMatrix{Float64}}, fep::FixedEffectProblem, iterationsv::Vector{Int}, convergedv::Vector{Bool}; kwargs...)
+function solve_residuals!(X::AbstractMatrix{Float64}, fep::FixedEffectProblem; kwargs...)
+    iterations = Vector{Int}(undef, size(X, 2))
+    convergeds = Vector{Bool}(undef, size(X, 2))
     for j in 1:size(X, 2)
-        r, iterations, converged = solve_residuals!(fep, view(X, :, j); kwargs...)
-        push!(iterationsv, iterations)
-        push!(convergedv, converged)
+        r, iteration, converged = solve_residuals!(view(X, :, j), fep; kwargs...)
+        iterations[j] = iteration
+        convergeds[j] = converged
     end
+    return X, iterations, convergeds
 end
-
-function partial_out!(::Array, ::Nothing, 
-                      ::Vector{Int}, ::Vector{Bool}; 
-                      kwargs...)
-    nothing
-end
-
 
 ##############################################################################
 ##
@@ -74,9 +70,9 @@ end
 ##
 ##############################################################################
 
-function getfe!(fep::FixedEffectProblem, b::Vector{Float64}; kwargs...)
+function solve_coefficients!(b::Vector{Float64}, fep::FixedEffectProblem; kwargs...)
     # solve Ax = b
-    x, iterations, converged = solve_coefficients!(fep, b; kwargs...)
+    x, iterations, converged = _solve_coefficients!(b, fep; kwargs...)
     if !converged 
        warn("getfe did not converge")
     end
