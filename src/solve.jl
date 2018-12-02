@@ -24,13 +24,13 @@ X = rand(10, 5)
 solve_residuals!(x, [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
-function solve_residuals!(y::AbstractVector{Float64}, fes::Vector{<: FixedEffect}; w ::AbstractVector{<:Real}= Ones{Float64}(length(y)), method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8)
+function solve_residuals!(y::AbstractVector{Float64}, fes::Vector{<: FixedEffect}, weights::AbstractWeights = Weights(Ones{Float64}(length(y))); method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8)
     for fe in fes
         if ismissing(fe)
             error("Some FixedEffect has a missing value for reference or interaction")
         end
     end
-    sqrtw = sqrt.(w)
+    sqrtw = sqrt.(weights.values)
     y .= y .* sqrtw
     fep = FixedEffectProblem(fes, sqrtw, Val{method})
 
@@ -39,13 +39,13 @@ function solve_residuals!(y::AbstractVector{Float64}, fes::Vector{<: FixedEffect
     return y, iteration, converged
 end
 
-function solve_residuals!(y::AbstractMatrix{Float64}, fes::Vector{<: FixedEffect}; weights::AbstractVector{<:Real} = Ones{Float64}(size(y, 1)),  method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8)
+function solve_residuals!(y::AbstractMatrix{Float64}, fes::Vector{<: FixedEffect}, weights::AbstractWeights  = Weights(Ones{Float64}(size(y, 1)));  method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8)
     for fe in fes
         if ismissing(fe)
             error("Some FixedEffect has a missing value for reference or interaction")
         end
     end
-    sqrtw = sqrt.(weights)
+    sqrtw = sqrt.(weights.values)
     y .= y .* sqrtw
     fep = FixedEffectProblem(fes, sqrtw, Val{method})
 
@@ -81,14 +81,14 @@ X = rand(10, 5)
 solve_coefficients!(x, [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
-function solve_coefficients!(y, fes::Vector{<: FixedEffect}; weights::AbstractVector{<:Real} = Ones{Float64}(length(y)), method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8)
+function solve_coefficients!(y, fes::Vector{<: FixedEffect}, weights::AbstractWeights  = Weights(Ones{Float64}(length(y))); method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8)
     for fe in fes
         if ismissing(fe)
             error("Some FixedEffect has a missing value for reference or interaction")
         end
     end
 
-    sqrtw = sqrt.(weights)
+    sqrtw = sqrt.(weights.values)
     fep = FixedEffectProblem(fes, sqrtw, Val{method})
 
     y .= y .* sqrtw
