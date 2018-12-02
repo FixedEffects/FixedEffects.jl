@@ -8,15 +8,13 @@ module FixedEffects
 ##############################################################################
 import Base: size, copyto!, getindex, length, fill!, eltype, length, view, adjoint, show, ismissing
 import LinearAlgebra: mul!, rmul!, norm, Matrix, Diagonal, cholesky, cholesky!, Symmetric, Hermitian, rank, dot, eigen, axpy!, svd, I, Adjoint, diag, qr
-import StatsBase: Weights
-import LinearAlgebra.BLAS: gemm!
-import Statistics: mean
-import Distributed: pmap
 if Base.USE_GPL_LIBS
     import SparseArrays: SparseMatrixCSC, sparse
 end
+import Distributed: pmap
 import CategoricalArrays: CategoricalArray, CategoricalVector, compress, categorical, CategoricalPool, levels, droplevels!
-
+using Reexport
+@reexport using StatsBase
 ##############################################################################
 ##
 ## Exported methods and types 
