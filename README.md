@@ -26,7 +26,7 @@ solve_residuals!(X, [p1, p2])
 solve_coefficients!(x, [p1, p3])
 ```
 
-Use `?solve_residuals!` or `solve_coefficients!` to see all the possible syntax.
+Use `?solve_residuals!` or `solve_coefficients!` to see the full syntax.
 
 This package is the backend for the package [FixedEffectModels.jl](https://github.com/matthieugomez/FixedEffectModels.jl), that estimates more general linears model with high-dimensional fixed effect.
 
