@@ -4,10 +4,10 @@ Solve a least square problem for a set of FixedEffects
 ### Arguments
 * `y` : an `AbstractVector{Float64}` or an `AbstractMatrix{Float64}`
 * `fes`: A Vector of `FixedEffect`
+* `weights`: Weights
+* `method` : A symbol for the method. Default is :lsmr (akin to conjugate gradient descent). Other choices are :lsmr_threads, :lsmr_parallel, :qr and :cholesky (factorization methods)
 * `maxiter` : Maximum number of iterations
-* `w`: Weights
 * `tol` : tolerance
-* `method` : A symbol for the method. Default is :lsmr (akin to conjugate gradient descent). Other choices are :qr and :cholesky (factorization methods)
 
 
 ### Returns
@@ -24,8 +24,12 @@ X = rand(10, 5)
 solve_residuals!(x, [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
-
-function solve_residuals!(y::AbstractVector{Float64}, fes::Vector{<: FixedEffect}; w = Ones{Float64}(length(y)), maxiter::Integer = 10000, tol::Real = 1e-8, method::Symbol = :lsmr)
+function solve_residuals!(y::AbstractVector{Float64}, fes::Vector{<: FixedEffect}; w ::AbstractVector{<:Real}= Ones{Float64}(length(y)), method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8)
+    for fe in fes
+        if ismissing(fe)
+            error("Some FixedEffect has a missing value for reference or interaction")
+        end
+    end
     sqrtw = sqrt.(w)
     y .= y .* sqrtw
     fep = FixedEffectProblem(fes, sqrtw, Val{method})
@@ -35,8 +39,13 @@ function solve_residuals!(y::AbstractVector{Float64}, fes::Vector{<: FixedEffect
     return y, iteration, converged
 end
 
-function solve_residuals!(y::AbstractMatrix{Float64}, fes::Vector{<: FixedEffect}; w = Ones{Float64}(size(y, 1)), maxiter::Integer = 10000, tol::Real = 1e-8, method::Symbol = :lsmr)
-    sqrtw = sqrt.(w)
+function solve_residuals!(y::AbstractMatrix{Float64}, fes::Vector{<: FixedEffect}; weights::AbstractVector{<:Real} = Ones{Float64}(size(y, 1)),  method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8)
+    for fe in fes
+        if ismissing(fe)
+            error("Some FixedEffect has a missing value for reference or interaction")
+        end
+    end
+    sqrtw = sqrt.(weights)
     y .= y .* sqrtw
     fep = FixedEffectProblem(fes, sqrtw, Val{method})
 
@@ -52,10 +61,10 @@ Solve a least square problem for a set of FixedEffects
 ### Arguments
 * `y` : an `AbstractVector{Float64}` 
 * `fes`: A Vector of `FixedEffect`
-* `maxiter` : Maximum number of iterations
-* `w`: Weights
-* `tol` : tolerance
+* `weights`: Weights
 * `method` : A symbol for the method. Default is :lsmr (akin to conjugate gradient descent). Other choices are :qr and :cholesky (factorization methods)
+* `maxiter` : Maximum number of iterations
+* `tol` : tolerance
 
 
 ### Returns
@@ -72,9 +81,14 @@ X = rand(10, 5)
 solve_coefficients!(x, [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
-function solve_coefficients!(y, fes::Vector{<: FixedEffect}; w = Ones{Float64}(length(y)), maxiter::Integer = 10000, tol::Real = 1e-8, method::Symbol = :lsmr)
+function solve_coefficients!(y, fes::Vector{<: FixedEffect}; weights::AbstractVector{<:Real} = Ones{Float64}(length(y)), method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8)
+    for fe in fes
+        if ismissing(fe)
+            error("Some FixedEffect has a missing value for reference or interaction")
+        end
+    end
 
-    sqrtw = sqrt.(w)
+    sqrtw = sqrt.(weights)
     fep = FixedEffectProblem(fes, sqrtw, Val{method})
 
     y .= y .* sqrtw

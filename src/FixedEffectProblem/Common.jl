@@ -1,29 +1,3 @@
-##############################################################################
-##
-## FixedEffect
-##
-## The categoricalarray may have pools that are never referred. Note that the pool does not appear in FixedEffect anyway.
-##
-##############################################################################
-
-struct FixedEffect{R <: Integer, I <: AbstractVector{Float64}}
-    refs::Vector{R}         # refs of the original CategoricalVector
-    interaction::I          # the continuous interaction
-    n::Int                  # Number of potential values (= maximum(refs))
-end
-
-function FixedEffect(x::AbstractVector, interaction::AbstractVector = Ones{Float64}(length(x)))
-    FixedEffect(categorical(x), interaction)
-end
-
-function FixedEffect(x::CategoricalVector, interaction::AbstractVector = Ones{Float64}(length(x)))
-    FixedEffect(x.refs, interaction, length(x.pool))
-end
-
-getindex(x::FixedEffect, idx) = FixedEffect(x.refs[idx], x.interaction[idx], x.n)
-
-
-
 
 ##############################################################################
 ##

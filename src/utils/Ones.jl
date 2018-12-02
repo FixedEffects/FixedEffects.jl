@@ -30,7 +30,7 @@ Diagonal(o::Ones{T}) where {T} = Matrix{T}(I, O.length, O.length)
 Base.sum(O::Ones) = O.length
 Base.convert(::Type{Vector{T}}, o::Ones) where {T} = ones(T, length(o))
 Base.collect(o::Ones{T}) where {T} = ones(T, length(o))
-
+Base.ismissing(O::Ones) = false
 
 # implement broadcast
 ## solve ambiguity
@@ -49,3 +49,4 @@ function Base.broadcast!(op::Function, A::Any, o::Ones)
 		invoke(broadcast!, Tuple{Any,typeof(A),AbstractVector}, op, A, o)
 	end
 end
+
