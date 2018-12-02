@@ -1,9 +1,9 @@
 [![Build Status](https://travis-ci.org/matthieugomez/FixedEffects.jl.svg?branch=master)](https://travis-ci.org/matthieugomez/FixedEffects.jl)
 [![Coverage Status](https://coveralls.io/repos/matthieugomez/FixedEffects.jl/badge.svg?branch=master)](https://coveralls.io/r/matthieugomez/FixedEffects.jl?branch=master)
 
-This package solves least squares problem with high dimensional fixed effects. It is the backend for the package [FixedEffectModels.jl](https://github.com/matthieugomez/FixedEffectModels.jl), that estimates more general linears model with high-dimensional fixed effect.
+This package solves least squares problem with high dimensional fixed effects. For a matrix `D` of high dimensional fixed effects, it finds `b` and `ϵ` such that `y = D'b + ϵ` with `E[Dϵ] = 0`. It is the backend for the package [FixedEffectModels.jl](https://github.com/matthieugomez/FixedEffectModels.jl), that estimates more general linears model with high-dimensional fixed effect.
 
-For a matrix `D` of high dimensional fixed effects, it finds `b` and `ϵ` such that `y = D'b + ϵ` with `E[Dϵ] = 0`.  The package defines two functions `solve_coefficients`, that returns the coefficients `b`, and `solve_residuals`, that returns the residuals `ϵ`. Use `?solve_residuals!` or `solve_coefficients!` for the full syntax.
+ The package defines two functions `solve_coefficients`, that returns the coefficients `b`, and `solve_residuals`, that returns the residuals `ϵ`. Use `?solve_residuals!` or `solve_coefficients!` for the full syntax.
 
 
 ```julia
