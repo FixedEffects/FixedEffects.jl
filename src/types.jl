@@ -12,7 +12,7 @@ struct FixedEffect{R <: AbstractVector{<:Integer}, I <: AbstractVector{<: Real}}
     n::Int                  # Number of potential values (= maximum(refs))
 end
 
-function FixedEffect(args...; interaction::AbstractVector = Ones{Float64}(length(args[1])))
+function FixedEffect(args...; interaction::AbstractVector = Weights(Ones{Float64}(length(args[1]))))
     if length(args) != 1
         FixedEffect(group(args...); interaction = interaction)
     else

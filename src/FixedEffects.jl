@@ -8,6 +8,7 @@ module FixedEffects
 ##############################################################################
 import Base: size, copyto!, getindex, length, fill!, eltype, length, view, adjoint, show, ismissing
 import LinearAlgebra: mul!, rmul!, norm, Matrix, Diagonal, cholesky, cholesky!, Symmetric, Hermitian, rank, dot, eigen, axpy!, svd, I, Adjoint, diag, qr
+import StatsBase: Weights
 import LinearAlgebra.BLAS: gemm!
 import Statistics: mean
 import Distributed: pmap

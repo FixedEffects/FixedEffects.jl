@@ -12,8 +12,8 @@ abstract type FixedEffectProblem end
 
 ##############################################################################
 ##
-## get residuals
-##
+## define solve_residuals! for matrix from solve_residuals!
+## Some type like lsmr_threads and lsmr_parallel define their own
 ##############################################################################
 
 function solve_residuals!(X::AbstractMatrix{Float64}, fep::FixedEffectProblem; kwargs...)
