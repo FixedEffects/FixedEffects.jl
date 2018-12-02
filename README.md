@@ -1,7 +1,7 @@
 [![Build Status](https://travis-ci.org/matthieugomez/FixedEffects.jl.svg?branch=master)](https://travis-ci.org/matthieugomez/FixedEffects.jl)
 [![Coverage Status](https://coveralls.io/repos/matthieugomez/FixedEffects.jl/badge.svg?branch=master)](https://coveralls.io/r/matthieugomez/FixedEffects.jl?branch=master)
 
-This package solves least squares problem with high dimensional fixedeffects. i.e for a matrix `D` of high dimensional fixed effefcts, it finds `b` and `ϵ` such that `y = D'b + ϵ`. This package is used as a backend for the package [FixedEffectModels.jl](https://github.com/matthieugomez/FixedEffectModels.jl), that estimates more general linears model with high dimensional fixed effects.
+This package solves least squares problem with high dimensional fixedeffects. i.e for a matrix `D` of high dimensional fixed effefcts, it finds `b` and `ϵ` such that `y = D'b + ϵ` with `E[Dϵ] = 0`. This package is used as a backend for the package [FixedEffectModels.jl](https://github.com/matthieugomez/FixedEffectModels.jl), that estimates more general linears model with high dimensional fixed effects.
 
 The package defines two functions `solve_coefficients`, that solves for the coefficients `b`, and `solve_residuals`, that solves for the residuals `ϵ`.
 
