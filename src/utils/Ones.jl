@@ -21,6 +21,7 @@ Base.getindex(::Ones{T}, idx::BitVector) where {T} = Ones{T}(sum(idx))
 Base.eltype(o::Ones{T}) where {T} = T
 Base.length(O::Ones) = O.length
 Base.size(O::Ones) = (O.length,)
+Base.view(O::Ones, idx) = Ones(length(idx))
 
 Base.similar(o::Ones{T}) where {T} = Ones{T}(length(o))
 Base.copy(o::Ones{T}) where {T} = Ones{T}(length(o))
