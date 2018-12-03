@@ -24,7 +24,7 @@ using Reexport
 export Ones,
 group,
 FixedEffect,
-FixedEffectProblem,
+FixedEffectMatrix,
 solve_residuals!,
 solve_coefficients!
 
@@ -37,10 +37,10 @@ solve_coefficients!
 include("utils/lsmr.jl")
 include("utils/Ones.jl")
 include("types.jl")
-include("FixedEffectProblem/Common.jl")
-include("FixedEffectProblem/LSMR.jl")
+include("FixedEffectMatrix/Common.jl")
+include("FixedEffectMatrix/LSMR.jl")
 if Base.USE_GPL_LIBS
-    include("FixedEffectProblem/Factorization.jl")
+    include("FixedEffectMatrix/Factorization.jl")
 end
 include("solve.jl")
 

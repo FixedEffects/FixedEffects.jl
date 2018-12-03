@@ -35,7 +35,7 @@ function solve_residuals!(y::AbstractVector{Float64}, fes::Vector{<: FixedEffect
     end
     sqrtw = sqrt.(weights.values)
     y .= y .* sqrtw
-    fep = FixedEffectProblem(fes, sqrtw, Val{method})
+    fep = FixedEffectMatrix(fes, sqrtw, Val{method})
 
     y, iteration, converged = solve_residuals!(y, fep; maxiter = maxiter, tol = tol)
     y .= y ./ sqrtw
@@ -50,7 +50,7 @@ function solve_residuals!(y::AbstractMatrix{Float64}, fes::Vector{<: FixedEffect
     end
     sqrtw = sqrt.(weights.values)
     y .= y .* sqrtw
-    fep = FixedEffectProblem(fes, sqrtw, Val{method})
+    fep = FixedEffectMatrix(fes, sqrtw, Val{method})
 
     y, iterations, convergeds = solve_residuals!(y, fep; maxiter = maxiter, tol = tol)
     y .= y ./ sqrtw
@@ -94,7 +94,7 @@ function solve_coefficients!(y, fes::Vector{<: FixedEffect}, weights::AbstractWe
     end
 
     sqrtw = sqrt.(weights.values)
-    fep = FixedEffectProblem(fes, sqrtw, Val{method})
+    fep = FixedEffectMatrix(fes, sqrtw, Val{method})
 
     y .= y .* sqrtw
     newfes, iteration, converged = solve_coefficients!(y, fep; maxiter = maxiter, tol = tol)
