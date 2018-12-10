@@ -112,7 +112,7 @@ end
 
 function cache(fe::FixedEffect, scale, sqrtw::AbstractVector)
     out = zeros(Float64, length(fe.refs))
-    @fastmath @inbounds @simd for i in 1:length(out)
+    @inbounds @simd ivdep for i in 1:length(out)
         out[i] = scale[fe.refs[i]] * fe.interaction[i] * sqrtw[i]
     end
     return out
@@ -134,7 +134,7 @@ end
 # Define x -> A * x
 function helperN!(α::Number, fe::FixedEffect, 
     x::Vector{Float64}, y::AbstractVector{Float64}, cache::Vector{Float64})
-    @inbounds @simd for i in 1:length(y)
+    @inbounds @simd ivdep for i in 1:length(y)
         y[i] += α * x[fe.refs[i]] * cache[i]
     end
 end
@@ -151,7 +151,7 @@ end
 # Define x -> A' * x
 function helperC!(α::Number, fe::FixedEffect, 
                         y::AbstractVector{Float64}, x::Vector{Float64}, cache::Vector{Float64})
-    @inbounds @simd for i in 1:length(y)
+    @inbounds @simd ivdep for i in 1:length(y)
         x[fe.refs[i]] += α * y[i] * cache[i]
     end
 end
