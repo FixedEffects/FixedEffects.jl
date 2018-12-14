@@ -13,6 +13,7 @@ if Base.USE_GPL_LIBS
 end
 import Distributed: pmap
 import CategoricalArrays: CategoricalArray, CategoricalVector, compress, categorical, CategoricalPool, levels, droplevels!
+using FillArrays
 using Reexport
 @reexport using StatsBase
 ##############################################################################
@@ -21,7 +22,7 @@ using Reexport
 ##
 ##############################################################################
 
-export Ones,
+export 
 group,
 FixedEffect,
 FixedEffectMatrix,
@@ -35,7 +36,6 @@ solve_coefficients!
 ##
 ##############################################################################
 include("utils/lsmr.jl")
-include("utils/Ones.jl")
 include("types.jl")
 include("FixedEffectMatrix/Common.jl")
 include("FixedEffectMatrix/LSMR.jl")
