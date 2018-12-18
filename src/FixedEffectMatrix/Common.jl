@@ -20,7 +20,8 @@ function solve_residuals!(X::AbstractMatrix{Float64}, fep::FixedEffectMatrix; kw
     iterations = Vector{Int}(undef, size(X, 2))
     convergeds = Vector{Bool}(undef, size(X, 2))
     for j in 1:size(X, 2)
-        r, iteration, converged = solve_residuals!(view(X, :, j), fep; kwargs...)
+        #view disables simd
+        X[:, j], iteration, converged = solve_residuals!(X[:, j], fep; kwargs...)
         iterations[j] = iteration
         convergeds[j] = converged
     end
