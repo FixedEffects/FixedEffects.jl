@@ -67,7 +67,7 @@ end
 
 ##############################################################################
 ## 
-## _LSMRFixedEffectMatrix
+## PreconditionnedLSMRFixedEffectMatrix
 ##
 ## A is the model matrix of categorical variables
 ## normalized by diag(1/a1, ..., 1/aN) (Jacobi preconditoner)
@@ -77,7 +77,7 @@ end
 ##
 ##############################################################################
 
-struct _LSMRFixedEffectMatrix
+struct PreconditionnedLSMRFixedEffectMatrix
     _::Vector{<:FixedEffect}
     m::Int
     n::Int
@@ -85,7 +85,7 @@ struct _LSMRFixedEffectMatrix
     cache::Vector{Vector{Float64}}
 end
 
-function _LSMRFixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector)
+function PreconditionnedLSMRFixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector)
     m = length(fes[1].refs)
     n = sum(fe.n for fe in fes)
     scales = Vector{Float64}[]
@@ -96,7 +96,7 @@ function _LSMRFixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVecto
     for i in 1:length(fes)
         push!(caches, cache(fes[i], scales[i], sqrtw))
     end
-    return _LSMRFixedEffectMatrix(fes, m, n, scales, caches)
+    return PreconditionnedLSMRFixedEffectMatrix(fes, m, n, scales, caches)
 end
 
 function cache(x::FixedEffect, sqrtw)
@@ -118,59 +118,52 @@ function cache(fe::FixedEffect, scale, sqrtw::AbstractVector)
     return out
 end
 
-eltype(fem::_LSMRFixedEffectMatrix) = Float64
+eltype(fem::PreconditionnedLSMRFixedEffectMatrix) = Float64
 
-size(fem::_LSMRFixedEffectMatrix, dim::Integer) = (dim == 1) ? fem.m :
+size(fem::PreconditionnedLSMRFixedEffectMatrix, dim::Integer) = (dim == 1) ? fem.m :
                                             (dim == 2) ? fem.n : 1
-Base.adjoint(fem) = Adjoint(fem)
 
-function mul!(y::AbstractVector{Float64}, fem::_LSMRFixedEffectMatrix, fev::FixedEffectVector, α::Number, β::Number)
-    safe_rmul!(y, β)
-    for i in 1:length(fev._)
-        helperN!(α, fem._[i], fev._[i], y, fem.cache[i])
+Base.adjoint(fem::PreconditionnedLSMRFixedEffectMatrix) = Adjoint(fem)
+
+function mul!(y::AbstractVector{Float64}, fem::PreconditionnedLSMRFixedEffectMatrix, fev::FixedEffectVector, α::Number, β::Number)
+    rmul!(y, β)
+    for (x, fe, cache) in zip(fev._, fem._, fem.cache)
+        helperN!(y, x, fe, α, cache)
     end
     return y
 end
-# Define x -> A * x
-function helperN!(α::Number, fe::FixedEffect, 
-    x::Vector{Float64}, y::AbstractVector{Float64}, cache::Vector{Float64})
+function helperN!(y::AbstractVector{Float64},
+    x::Vector{Float64}, fe::FixedEffect, α::Number, cache::Vector{Float64})
     @inbounds @simd ivdep for i in 1:length(y)
-        y[i] += α * x[fe.refs[i]] * cache[i]
+        y[i] += x[fe.refs[i]] * α * cache[i]
     end
 end
 
-function mul!(fev::FixedEffectVector, Cfem::Adjoint{T, _LSMRFixedEffectMatrix}, y::AbstractVector{Float64}, α::Number, β::Number) where {T}
+
+function mul!(fev::FixedEffectVector, Cfem::Adjoint{T, PreconditionnedLSMRFixedEffectMatrix}, y::AbstractVector{Float64}, α::Number, β::Number) where {T}
     fem = adjoint(Cfem)
-    safe_rmul!(fev, β)
-    for i in 1:length(fev._)
-        helperC!(α, fem._[i], y, fev._[i], fem.cache[i])
+    rmul!(fev, β)
+    for (x, fe, cache) in zip(fev._, fem._, fem.cache)
+        helperC!(x, fe, y, α, cache)
     end
     return fev
 end
-
-# Define x -> A' * x
-function helperC!(α::Number, fe::FixedEffect, 
-                        y::AbstractVector{Float64}, x::Vector{Float64}, cache::Vector{Float64})
+function helperC!(x::Vector{Float64}, fe::FixedEffect, 
+                        y::AbstractVector{Float64}, α::Number, cache::Vector{Float64})
     @inbounds @simd ivdep for i in 1:length(y)
-        x[fe.refs[i]] += α * y[i] * cache[i]
-    end
-end
-
-function safe_rmul!(x, β)
-    if !(β ≈ 1.0)
-        β ≈ 0.0 ? fill!(x, zero(eltype(x))) : rmul!(x, β)
+        x[fe.refs[i]] += y[i] * α * cache[i]
     end
 end
 
 ##############################################################################
 ##
-## LSMRFixedEffectMatrix is a wrapper around a _LSMRFixedEffectMatrix 
+## LSMRFixedEffectMatrix is a wrapper around a PreconditionnedLSMRFixedEffectMatrix 
 ## with some storage arrays used when solving (A'A)X = A'y 
 ##
 ##############################################################################
 
-struct LSMRFixedEffectMatrix <: FixedEffectMatrix
-    m::_LSMRFixedEffectMatrix
+struct LSMRFixedEffectMatrix <: AbstractFixedEffectMatrix
+    m::PreconditionnedLSMRFixedEffectMatrix
     x::FixedEffectVector
     v::FixedEffectVector
     h::FixedEffectVector
@@ -179,7 +172,7 @@ struct LSMRFixedEffectMatrix <: FixedEffectMatrix
 end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr}})
-    m = _LSMRFixedEffectMatrix(fes, sqrtw)
+    m = PreconditionnedLSMRFixedEffectMatrix(fes, sqrtw)
     x = FixedEffectVector(fes)
     v = FixedEffectVector(fes)
     h = FixedEffectVector(fes)
@@ -222,7 +215,7 @@ end
 ##
 ##############################################################################
 
-struct LSMRParallelFixedEffectMatrix <: FixedEffectMatrix
+struct LSMRParallelFixedEffectMatrix <: AbstractFixedEffectMatrix
     fes::Vector{<:FixedEffect}
     sqrtw::AbstractVector
 end
@@ -260,7 +253,7 @@ end
 ##
 ##############################################################################
 
-struct LSMRThreadslFixedEffectMatrix <: FixedEffectMatrix
+struct LSMRThreadslFixedEffectMatrix <: AbstractFixedEffectMatrix
     fes::Vector{<:FixedEffect}
     sqrtw::AbstractVector
 end

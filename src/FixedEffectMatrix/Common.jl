@@ -8,7 +8,7 @@
 ## FixeEffectMatrix(Vector{FixedEffect}, method)
 ##############################################################################
 
-abstract type FixedEffectMatrix end
+abstract type AbstractFixedEffectMatrix end
 
 ##############################################################################
 ##
@@ -16,7 +16,7 @@ abstract type FixedEffectMatrix end
 ## Some type like lsmr_threads and lsmr_parallel define their own
 ##############################################################################
 
-function solve_residuals!(X::AbstractMatrix{Float64}, fep::FixedEffectMatrix; kwargs...)
+function solve_residuals!(X::AbstractMatrix{Float64}, fep::AbstractFixedEffectMatrix; kwargs...)
     iterations = Vector{Int}(undef, size(X, 2))
     convergeds = Vector{Bool}(undef, size(X, 2))
     for j in 1:size(X, 2)
@@ -45,7 +45,7 @@ end
 ##
 ##############################################################################
 
-function solve_coefficients!(b::Vector{Float64}, fep::FixedEffectMatrix; kwargs...)
+function solve_coefficients!(b::Vector{Float64}, fep::AbstractFixedEffectMatrix; kwargs...)
     # solve Ax = b
     x, iterations, converged = _solve_coefficients!(b, fep; kwargs...)
     if !converged 
@@ -133,7 +133,7 @@ function connectedcomponent!(component::Vector{Set{Int}},
     end
 end
 
-function rescale!(fev::Vector{Vector{Float64}}, fep::FixedEffectMatrix, 
+function rescale!(fev::Vector{Vector{Float64}}, fep::AbstractFixedEffectMatrix, 
                   findintercept,
                   components::Vector{Vector{Set{Int}}})
     fes = get_fes(fep)

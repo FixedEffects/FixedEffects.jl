@@ -4,7 +4,7 @@
 ##
 ##############################################################################
 
-struct CholeskyFixedEffectMatrix{T} <: FixedEffectMatrix
+struct CholeskyFixedEffectMatrix{T} <: AbstractFixedEffectMatrix
     fes::Vector{<:FixedEffect}
     m::SparseMatrixCSC{Float64,Int}
     cholm::T
@@ -28,7 +28,7 @@ end
 ##
 ##############################################################################
 
-struct QRFixedEffectMatrix{T} <: FixedEffectMatrix
+struct QRFixedEffectMatrix{T} <: AbstractFixedEffectMatrix
     fes::Vector{<:FixedEffect}
     m::SparseMatrixCSC{Float64,Int}
     qrm::T
