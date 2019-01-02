@@ -7,7 +7,7 @@ module FixedEffects
 ##
 ##############################################################################
 import Base: size, copyto!, getindex, length, fill!, eltype, length, view, adjoint, show, ismissing
-import LinearAlgebra: mul!, rmul!, norm, Matrix, Diagonal, cholesky, cholesky!, Symmetric, Hermitian, rank, dot, eigen, axpy!, svd, I, Adjoint, diag, qr
+import LinearAlgebra: mul!, rmul!, norm, Matrix, Diagonal, cholesky, cholesky!, Symmetric, Hermitian, rank, dot, eigen, axpy!, svd, I, Adjoint, adjoint, diag, qr
 if Base.USE_GPL_LIBS
     import SparseArrays: SparseMatrixCSC, sparse
 end
