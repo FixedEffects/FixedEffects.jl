@@ -16,54 +16,44 @@
 ##############################################################################
 # Use VectorOfArray from RecursiveArrayTools
 struct FixedEffectVector
-    _::Vector{Vector{Float64}}
+    fes::Vector{Vector{Float64}}
 end
 
 function FixedEffectVector(fes::Vector{<:FixedEffect})
-    out = Vector{Float64}[]
-    for fe in fes
-        push!(out, zeros(fe.n))
-    end
-    return FixedEffectVector(out)
+    FixedEffectVector([zeros(fe.n) for fe in fes])
 end
 
 eltype(fem::FixedEffectVector) = Float64
-
-length(fev::FixedEffectVector) = sum(length(x) for x in fev._)
-
-function norm(fev::FixedEffectVector)
-    sqrt(sum(sum(abs2, fe) for fe in  fev._))
-end
+length(fev::FixedEffectVector) = sum(length(x) for x in fev.fes)
+norm(fev::FixedEffectVector) = sqrt(sum(sum(abs2, fe) for fe in  fev.fes))
 
 function fill!(fev::FixedEffectVector, x)
-    for fe in fev._
+    for fe in fev.fes
         fill!(fe, x)
     end
+    return fev
 end
 
 function rmul!(fev::FixedEffectVector, α::Number)
-    for fe in fev._
+    for fe in fev.fes
         rmul!(fe, α)
     end
     return fev
 end
 
-function copyto!(fev2::FixedEffectVector, fev1::FixedEffectVector)
-    for i in 1:length(fev1._)
-        copyto!(fev2._[i], fev1._[i])
+function copyto!(fev1::FixedEffectVector, fev2::FixedEffectVector)
+    for (fe1, fe2) in zip(fev1.fes, fev2.fes)
+        copyto!(fe1, fe2)
     end
-    return fev2
+    return fev1
 end
-
 
 function axpy!(α::Number, fev1::FixedEffectVector, fev2::FixedEffectVector)
-    for i in 1:length(fev1._)
-        axpy!(α, fev1._[i], fev2._[i])
+    for (fe1, fe2) in zip(fev1.fes, fev2.fes)
+        axpy!(α, fe1, fe2)
     end
     return fev2
 end
-
-
 
 ##############################################################################
 ## 
@@ -78,60 +68,52 @@ end
 ##############################################################################
 
 struct PreconditionnedLSMRFixedEffectMatrix
-    _::Vector{<:FixedEffect}
-    m::Int
-    n::Int
-    scale::Vector{Vector{Float64}}
-    cache::Vector{Vector{Float64}}
+    fes::Vector{<:FixedEffect}
+    scales::Vector{Vector{Float64}}
+    caches::Vector{Vector{Float64}}
 end
 
 function PreconditionnedLSMRFixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector)
-    m = length(fes[1].refs)
-    n = sum(fe.n for fe in fes)
-    scales = Vector{Float64}[]
-    for i in 1:length(fes)
-        push!(scales, cache(fes[i], sqrtw))
-    end
-    caches = Vector{Float64}[]
-    for i in 1:length(fes)
-        push!(caches, cache(fes[i], scales[i], sqrtw))
-    end
-    return PreconditionnedLSMRFixedEffectMatrix(fes, m, n, scales, caches)
+    scales = [_scale(fe, sqrtw) for fe in fes] 
+    caches = [_cache(fe, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
+    return PreconditionnedLSMRFixedEffectMatrix(fes, scales, caches)
 end
 
-function cache(x::FixedEffect, sqrtw)
-    scale = zeros(x.n)
+function _scale(x::FixedEffect, sqrtw)
+    out = zeros(x.n)
     for i in 1:length(x.refs)
-        scale[x.refs[i]] += abs2(x.interaction[i] * sqrtw[i])
+        out[x.refs[i]] += abs2(x.interaction[i] * sqrtw[i])
     end
-    for i in 1:length(scale)
-        scale[i] = scale[i] > 0.0 ? (1.0 / sqrt(scale[i])) : 0.0
+    for i in 1:length(out)
+        out[i] = out[i] > 0.0 ? (1.0 / sqrt(out[i])) : 0.0
     end
-    return scale
+    return out
 end
 
-function cache(fe::FixedEffect, scale, sqrtw::AbstractVector)
-    out = zeros(Float64, length(fe.refs))
-    @inbounds @simd ivdep for i in 1:length(out)
+function _cache(fe::FixedEffect, scale, sqrtw::AbstractVector)
+    out = zeros(length(fe.refs))
+    @inbounds @simd for i in 1:length(out)
         out[i] = scale[fe.refs[i]] * fe.interaction[i] * sqrtw[i]
     end
     return out
 end
 
 eltype(fem::PreconditionnedLSMRFixedEffectMatrix) = Float64
+adjoint(fem::PreconditionnedLSMRFixedEffectMatrix) = Adjoint(fem)
 
-size(fem::PreconditionnedLSMRFixedEffectMatrix, dim::Integer) = (dim == 1) ? fem.m :
-                                            (dim == 2) ? fem.n : 1
+function size(fem::PreconditionnedLSMRFixedEffectMatrix, dim::Integer)
+    (dim == 1) ? length(fem.fes[1].refs) : (dim == 2) ? sum(fe.n for fe in fem.fes) : 1
+end
 
-Base.adjoint(fem::PreconditionnedLSMRFixedEffectMatrix) = Adjoint(fem)
 
 function mul!(y::AbstractVector{Float64}, fem::PreconditionnedLSMRFixedEffectMatrix, fev::FixedEffectVector, α::Number, β::Number)
     rmul!(y, β)
-    for (x, fe, cache) in zip(fev._, fem._, fem.cache)
+    for (x, fe, cache) in zip(fev.fes, fem.fes, fem.caches)
         helperN!(y, x, fe, α, cache)
     end
     return y
 end
+
 function helperN!(y::AbstractVector{Float64},
     x::Vector{Float64}, fe::FixedEffect, α::Number, cache::Vector{Float64})
     @inbounds @simd ivdep for i in 1:length(y)
@@ -143,11 +125,12 @@ end
 function mul!(fev::FixedEffectVector, Cfem::Adjoint{T, PreconditionnedLSMRFixedEffectMatrix}, y::AbstractVector{Float64}, α::Number, β::Number) where {T}
     fem = adjoint(Cfem)
     rmul!(fev, β)
-    for (x, fe, cache) in zip(fev._, fem._, fem.cache)
+    for (x, fe, cache) in zip(fev.fes, fem.fes, fem.caches)
         helperC!(x, fe, y, α, cache)
     end
     return fev
 end
+
 function helperC!(x::Vector{Float64}, fe::FixedEffect, 
                         y::AbstractVector{Float64}, α::Number, cache::Vector{Float64})
     @inbounds @simd ivdep for i in 1:length(y)
@@ -177,15 +160,15 @@ function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::
     v = FixedEffectVector(fes)
     h = FixedEffectVector(fes)
     hbar = FixedEffectVector(fes)
-    u = Array{Float64}(undef, size(m, 1))
+    u = zeros(size(m, 1))
     return LSMRFixedEffectMatrix(m, x, v, h, hbar, u)
 end
 
-get_fes(fep::LSMRFixedEffectMatrix) = fep.m._
+get_fes(fep::LSMRFixedEffectMatrix) = fep.m.fes
 
 function solve!(fep::LSMRFixedEffectMatrix, r::AbstractVector{Float64}; 
     tol::Real = 1e-8, maxiter::Integer = 100_000)
-    fill!(fep.x, zero(Float64))
+    fill!(fep.x, 0.0)
     copyto!(fep.u, r)
     x, ch = lsmr!(fep.x, fep.m, fep.u, fep.v, fep.h, fep.hbar; 
         atol = tol, btol = tol, conlim = 1e8, maxiter = maxiter)
@@ -200,10 +183,10 @@ end
 
 function _solve_coefficients!(r::AbstractVector{Float64}, fep::LSMRFixedEffectMatrix; kwargs...)
     iterations, converged = solve!(fep, r; kwargs...)
-    for i in 1:length(fep.x._)
-        fep.x._[i] .= fep.x._[i] .* fep.m.scale[i]
+    for (fe, scale) in zip(fep.x.fes, fep.m.scales)
+        fe .*=  scale
     end
-    return fep.x._, iterations, converged
+    return fep.x.fes, iterations, converged
 end
 
 
@@ -225,8 +208,8 @@ get_fes(fep::LSMRParallelFixedEffectMatrix) = fep.fes
 
 
 function solve_residuals!(X::AbstractMatrix{Float64}, fep::LSMRParallelFixedEffectMatrix; kwargs...)
-    iterations = Vector{Int}(undef, size(X, 2))
-    convergeds = Vector{Bool}(undef, size(X, 2))
+    iterations = zeros(Int, size(X, 2))
+    convergeds = zeros(Bool, size(X, 2))
     result = pmap(x -> solve_residuals!(x, fep;kwargs...), [X[:, j] for j in 1:size(X, 2)])
     for j in 1:size(X, 2)
         X[:, j] = result[j][1]
@@ -263,10 +246,10 @@ get_fes(fep::LSMRThreadslFixedEffectMatrix) = fep.fes
 
 
 function solve_residuals!(X::AbstractMatrix{Float64}, fep::LSMRThreadslFixedEffectMatrix; kwargs...)
-   iterations = Vector{Int}(undef, size(X, 2))
-   convergeds = Vector{Bool}(undef, size(X, 2))
+   iterations = zeros(Int, size(X, 2))
+   convergeds = zeros(Bool, size(X, 2))
    Threads.@threads for j in 1:size(X, 2)
-        r, iteration, converged = solve_residuals!(view(X, :, j), fep; kwargs...)
+        X[:, j], iteration, converged = solve_residuals!(X[:, j], fep; kwargs...)
         iterations[j] = iteration
         convergeds[j] = converged
    end
