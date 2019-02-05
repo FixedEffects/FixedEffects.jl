@@ -12,7 +12,7 @@ if Base.USE_GPL_LIBS
     import SparseArrays: SparseMatrixCSC, sparse
 end
 import Distributed: pmap
-import CategoricalArrays: CategoricalArray, CategoricalVector, compress, categorical, CategoricalPool, levels, droplevels!
+using DataFrames 
 using FillArrays
 using Reexport
 @reexport using StatsBase
@@ -23,7 +23,6 @@ using Reexport
 ##############################################################################
 
 export 
-group,
 FixedEffect,
 FixedEffectMatrix,
 solve_residuals!,
