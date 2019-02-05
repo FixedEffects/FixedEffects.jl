@@ -7,18 +7,26 @@
 ##############################################################################
 
 struct FixedEffect{R <: AbstractVector{<:Integer}, I <: AbstractVector{<: Real}}
-    refs::R                 # refs
-    n::Int                  # Number of potential values not including missing (= maximum(refs))
+    refs::R                 # refs of the original CategoricalVector
     interaction::I          # the continuous interaction
-    function FixedEffect{R, I}(refs, n, interaction) where {R <: AbstractVector{<:Integer}, I <: AbstractVector{<: Real}}
-        new(refs, n, interaction)
+    n::Int                  # Number of potential values (= maximum(refs))
+    function FixedEffect{R, I}(refs, interaction, n) where {R <: AbstractVector{<:Integer}, I <: AbstractVector{<: Real}}
+        maximum(refs) > n && error("Categorical Vector used to construct Fixed Effect is malformed. Some elements of refs do not refer to pool")
+        new(refs, interaction, n)
     end
 end
 
 function FixedEffect(args...; interaction::AbstractVector = Ones{Float64}(length(args[1])))
-    groups = Vector{Int}(undef, length(args[1]))    
-    ngroups, rhashes, gslots, sorted = DataFrames.row_group_slots(args, Val(true), groups, true)
-    FixedEffect{Vector{Int}, typeof(interaction)}(groups .-1, ngroups - 1, interaction)
+    if length(args) != 1
+        FixedEffect(group(args...); interaction = interaction)
+    else
+        x = args[1]
+        if !isa(x, CategoricalVector)
+            FixedEffect(categorical(x); interaction = interaction)
+        else
+            FixedEffect{typeof(x.refs), typeof(interaction)}(x.refs, interaction, length(x.pool))
+        end
+    end
 end
 
 function Base.show(io::IO, fe::FixedEffect)
@@ -37,4 +45,49 @@ function Base.show(io::IO, fe::FixedEffect)
 end
 
 Base.ismissing(fe::FixedEffect) = any(fe.refs .== 0)  | ismissing(fe.interaction)
+##############################################################################
+##
+## group transform multiple CategoricalVector into one
+## Output is a CategoricalVector where pool is type Int64, equal to ranking of group
+## Missing in some row mean result has Missing on this row
+## 
+##############################################################################
 
+function group(args...)
+    v = categorical(args[1])
+    if length(args) == 1
+        x = v.refs
+    else
+        x, ngroups = convert(Vector{UInt}, v.refs), length(levels(v))
+        for j = 2:length(args)
+            v = categorical(args[j])
+            x, ngroups = pool_combine!(x, v, ngroups)
+        end
+    end
+    factorize!(x)
+end
+
+#  drop unused levels
+function factorize!(refs::Vector{T}) where {T}
+    uu = unique(refs)
+    sort!(uu)
+    has_missing = uu[1] == 0
+    dict = Dict{T, Int}(zip(uu, (1-has_missing):(length(uu)-has_missing)))
+    newrefs = zeros(UInt32, length(refs))
+    for i in 1:length(refs)
+         newrefs[i] = dict[refs[i]]
+    end
+    if has_missing
+        Tout = Union{Int, Missing}
+    else
+        Tout = Int
+    end
+    CategoricalArray{Tout, 1}(newrefs, CategoricalPool(collect(1:(length(uu)-has_missing))))
+end
+function pool_combine!(x::Array{T, N}, dv::CategoricalVector, ngroups::Integer) where {T, N}
+    for i in 1:length(x)
+        # if previous one is NA or this one is NA, set to NA
+        x[i] = (dv.refs[i] == 0 || x[i] == zero(T)) ? zero(T) : x[i] + (dv.refs[i] - 1) * ngroups
+    end
+    return x, ngroups * length(levels(dv))
+end

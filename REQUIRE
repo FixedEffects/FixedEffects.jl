@@ -1,5 +1,5 @@
 julia 1.0
 FillArrays
-DataFrames
+CategoricalArrays
 Reexport
 StatsBase

@@ -14,7 +14,7 @@
 ## copyto!, fill!, rmul!, axpy!, norm
 ##
 ##############################################################################
-# Use VectorOfArray from RecursiveArrayTools
+
 struct FixedEffectVector
     fes::Vector{Vector{Float64}}
 end
@@ -262,3 +262,4 @@ end
 function _solve_coefficients!(r::AbstractVector{Float64}, fep::LSMRThreadslFixedEffectMatrix; kwargs...)
     _solve_coefficients!(r, FixedEffectMatrix(fep.fes, fep.sqrtw, Val{:lsmr}); kwargs...)
 end
+
