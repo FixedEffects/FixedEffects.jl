@@ -36,6 +36,7 @@ solve_coefficients!
 ##
 ##############################################################################
 include("utils/lsmr.jl")
+include("utils/group.jl")
 include("types.jl")
 include("FixedEffectMatrix/Common.jl")
 include("FixedEffectMatrix/LSMR.jl")
