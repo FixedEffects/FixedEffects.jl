@@ -1,7 +1,8 @@
 using FixedEffects
 
 tests = ["solve_residuals.jl",
-		 "solve_coefficients.jl"
+		 "solve_coefficients.jl",
+		 "utils.jl"
 		 ]
 
 println("Running tests:")
