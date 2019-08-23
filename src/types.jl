@@ -31,17 +31,9 @@ end
 
 function Base.show(io::IO, fe::FixedEffect)
     println(io, "Refs:        ", length(fe.refs), "-element ", typeof(fe.refs))
-    if length(fe.refs) <= 5
-        println(io, "             ", convert(Vector{Int}, fe.refs))
-    else
-        println(io, "             ", convert(Vector{Int}, fe.refs[1:5]), "...")
-    end
+    println(io, "             ", Int.(fe.refs[1:min(5, length(fe.refs))]), "...")
     println(io, "Interaction: ", length(fe.interaction), "-element ", typeof(fe.interaction))
-    if length(fe.interaction) <= 5
-        println(io, "             ", fe.interaction, "...")
-    else
-        println(io, "             ", fe.interaction[1:5], "...")
-    end
+    println(io, "             ", fe.interaction[1:min(5, length(fe.interaction))], "...")
 end
 
 Base.ismissing(fe::FixedEffect) = any(fe.refs .== 0)  | ismissing(fe.interaction)

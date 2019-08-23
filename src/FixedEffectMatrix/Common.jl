@@ -16,7 +16,7 @@ abstract type AbstractFixedEffectMatrix end
 ## Some type like lsmr_threads and lsmr_parallel define their own
 ##############################################################################
 
-function solve_residuals!(X::AbstractMatrix{Float64}, fep::AbstractFixedEffectMatrix; kwargs...)
+function solve_residuals!(X::AbstractMatrix, fep::AbstractFixedEffectMatrix; kwargs...)
     iterations = Vector{Int}(undef, size(X, 2))
     convergeds = Vector{Bool}(undef, size(X, 2))
     for j in 1:size(X, 2)
@@ -45,7 +45,7 @@ end
 ##
 ##############################################################################
 
-function solve_coefficients!(b::Vector{Float64}, fep::AbstractFixedEffectMatrix; kwargs...)
+function solve_coefficients!(b::AbstractVector, fep::AbstractFixedEffectMatrix; kwargs...)
     # solve Ax = b
     x, iterations, converged = _solve_coefficients!(b, fep; kwargs...)
     if !converged 
@@ -108,10 +108,9 @@ function initialize_refs(fes::AbstractVector{<:FixedEffect})
 end
 
 # Breadth-first search
-function connectedcomponent!(component::Vector{Set{Int}}, 
-    visited::Vector{Bool}, i::Integer, refs::Matrix{Int}, 
-    where::Vector{Vector{Set{Int}}}) 
-    tovisit = Set{Int}(i)
+function connectedcomponent!(component::Vector{Set{N}}, visited::Vector{Bool}, 
+    i::Integer, refs::AbstractMatrix{N}, where::Vector{Vector{Set{N}}})  where {N}
+    tovisit = Set{N}(i)
     while !isempty(tovisit)
         i = pop!(tovisit)
         visited[i] = true
@@ -133,17 +132,17 @@ function connectedcomponent!(component::Vector{Set{Int}},
     end
 end
 
-function rescale!(fev::Vector{Vector{Float64}}, fep::AbstractFixedEffectMatrix, 
+function rescale!(fev::Vector{Vector{T}}, fep::AbstractFixedEffectMatrix, 
                   findintercept,
-                  components::Vector{Vector{Set{Int}}})
+                  components::Vector{Vector{Set{N}}}) where {T, N}
     fes = get_fes(fep)
-    adj1 = zero(Float64)
+    adj1 = zero(T)
     i1 = findintercept[1]
     for component in components
         for i in reverse(findintercept)
             # demean all fixed effects except the first
             if i != 1
-                adji = zero(Float64)
+                adji = zero(T)
                 for j in component[i]
                     adji += fev[i][j]
                 end

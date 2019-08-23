@@ -4,21 +4,21 @@
 ##
 ##############################################################################
 
-struct CholeskyFixedEffectMatrix{T} <: AbstractFixedEffectMatrix
+struct CholeskyFixedEffectMatrix{T, V, N} <: AbstractFixedEffectMatrix
     fes::Vector{<:FixedEffect}
-    m::SparseMatrixCSC{Float64,Int}
+    m::SparseMatrixCSC{V, N}
     cholm::T
-    x::Vector{Float64}
+    x::Vector{V}
 end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:cholesky}})
     m = sparse(fes, sqrtw)
     cholm = cholesky(Symmetric(m' * m))
     total_len = sum(length(unique(fe.refs)) for fe in fes)
-    CholeskyFixedEffectMatrix(fes, m, cholm, Array{Float64}(undef, total_len))
+    CholeskyFixedEffectMatrix(fes, m, cholm, zeros(total_len))
 end
 
-function solve!(fep::CholeskyFixedEffectMatrix, r::AbstractVector{Float64} ; kwargs...)
+function solve!(fep::CholeskyFixedEffectMatrix, r::AbstractVector; kwargs...)
     fep.cholm \ mul!(fep.x, fep.m', r)
 end
 
@@ -28,21 +28,21 @@ end
 ##
 ##############################################################################
 
-struct QRFixedEffectMatrix{T} <: AbstractFixedEffectMatrix
+struct QRFixedEffectMatrix{T, V, N} <: AbstractFixedEffectMatrix
     fes::Vector{<:FixedEffect}
-    m::SparseMatrixCSC{Float64,Int}
+    m::SparseMatrixCSC{V, N}
     qrm::T
-    b::Vector{Float64}
+    b::Vector{V}
 end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:qr}})
     m = sparse(fes, sqrtw)
     qrm = qr(m)
-    b = Array{Float64}(undef, length(fes[1].refs))
+    b = zeros(length(fes[1].refs))
     QRFixedEffectMatrix(fes, m, qrm, b)
 end
 
-function solve!(fep::QRFixedEffectMatrix, r::AbstractVector{Float64} ; kwargs...) 
+function solve!(fep::QRFixedEffectMatrix, r::AbstractVector ; kwargs...) 
     # since \ needs a vector
     copyto!(fep.b, r)
     fep.qrm \ fep.b
@@ -59,9 +59,9 @@ function sparse(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector)
     # construct model matrix A constituted by fixed effects
     nobs = length(fes[1].refs)
     N = length(fes) * nobs
-    I = Array{Int}(undef, N)
+    I = zeros(Int, N)
     J = similar(I)
-    V = Array{Float64}(undef, N)
+    V = zeros(Float64, N)
     start = 0
     idx = 0
     for fe in fes
@@ -77,18 +77,18 @@ function sparse(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector)
 end
 
 # updates r as the residual of the projection of r on A
-function solve_residuals!(r::AbstractVector{Float64}, fep::Union{CholeskyFixedEffectMatrix, QRFixedEffectMatrix}; kwargs...)
+function solve_residuals!(r::AbstractVector, fep::Union{CholeskyFixedEffectMatrix, QRFixedEffectMatrix}; kwargs...)
     x = solve!(fep, r; kwargs...)
     mul!(r, fep.m, x, -1.0, 1.0)
     return r, 1, true
 end
 
 # solves A'Ax = A'r
-# transform x from Vector{Float64} (stacked vector of coefficients) 
-# to Vector{Vector{Float64}} (vector of coefficients for each categorical variable)
-function _solve_coefficients!(r::AbstractVector{Float64}, fep::Union{CholeskyFixedEffectMatrix, QRFixedEffectMatrix}; kwargs...)
+# transform x from Vector (stacked vector of coefficients) 
+# to Vector{Vector} (vector of coefficients for each categorical variable)
+function _solve_coefficients!(r::AbstractVector, fep::Union{CholeskyFixedEffectMatrix, QRFixedEffectMatrix}; kwargs...)
     x = solve!(fep, r; kwargs...)
-    out = Vector{Float64}[]
+    out = Vector{eltype(r)}[]
     iend = 0
     for fe in fep.fes
         istart = iend + 1
