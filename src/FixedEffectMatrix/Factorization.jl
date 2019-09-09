@@ -83,6 +83,19 @@ function solve_residuals!(r::AbstractVector, fep::Union{CholeskyFixedEffectMatri
     return r, 1, true
 end
 
+function solve_residuals!(X::AbstractMatrix, fep::Union{CholeskyFixedEffectMatrix, QRFixedEffectMatrix}; kwargs...)
+    iterations = Vector{Int}(undef, size(X, 2))
+    convergeds = Vector{Bool}(undef, size(X, 2))
+    for j in 1:size(X, 2)
+        #view disables simd
+        X[:, j], iteration, converged = solve_residuals!(X[:, j], fep; kwargs...)
+        iterations[j] = iteration
+        convergeds[j] = converged
+    end
+    return X, iterations, convergeds
+end
+
+
 # solves A'Ax = A'r
 # transform x from Vector (stacked vector of coefficients) 
 # to Vector{Vector} (vector of coefficients for each categorical variable)

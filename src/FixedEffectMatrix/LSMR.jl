@@ -182,6 +182,19 @@ function solve_residuals!(r::AbstractVector, fep::LSMRFixedEffectMatrix; kwargs.
     mul!(r, fep.m, fep.x, -1.0, 1.0)
     return r, iterations, converged
 end
+function solve_residuals!(X::AbstractMatrix, fep::LSMRFixedEffectMatrix; kwargs...)
+    iterations = Vector{Int}(undef, size(X, 2))
+    convergeds = Vector{Bool}(undef, size(X, 2))
+    for j in 1:size(X, 2)
+        #view disables simd
+        X[:, j], iteration, converged = solve_residuals!(X[:, j], fep; kwargs...)
+        iterations[j] = iteration
+        convergeds[j] = converged
+    end
+    return X, iterations, convergeds
+end
+
+
 
 function _solve_coefficients!(r::AbstractVector, fep::LSMRFixedEffectMatrix; kwargs...)
     iterations, converged = solve!(fep, r; kwargs...)
