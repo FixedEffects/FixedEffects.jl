@@ -21,10 +21,6 @@ p3 = FixedEffect(repeat(1:5, outer = 2), interaction = rand(10))
 x = rand(10)
 solve_residuals!(x, [p1, p2])
 
-# partial out a matrix
-X = rand(10, 5)
-solve_residuals!(X, [p1, p2])
-
 # find the fixed effect coefficients
 solve_coefficients!(x, [p1, p3])
 ```
