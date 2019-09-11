@@ -198,7 +198,7 @@ end
 function solve_residuals!(X::AbstractMatrix, feM::FixedEffectLSMRParallel; kwargs...)
     iterations = zeros(Int, size(X, 2))
     convergeds = zeros(Bool, size(X, 2))
-    result = pmap(x -> solve_residuals!(x, feM;kwargs...), [X[:, j] for j in 1:size(X, 2)])
+    result = pmap(x -> solve_residuals!(x, feM; kwargs...), [X[:, j] for j in 1:size(X, 2)])
     for j in 1:size(X, 2)
         X[:, j] = result[j][1]
         iterations[j] =  result[j][2]
