@@ -29,20 +29,19 @@ p2 = repeat(1:5, outer = 2)
 solve_residuals!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
-function solve_residuals!(y::Union{AbstractVector, AbstractMatrix}, fes::Vector{<: FixedEffect}, weights::AbstractWeights = Weights(Ones{eltype(y)}(size(y, 1))); method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8)
+function solve_residuals!(y::Union{AbstractVector, AbstractMatrix}, fes::AbstractVector{<: FixedEffect}, weights::AbstractWeights = Weights(Ones{eltype(y)}(size(y, 1))); method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8)
     any(ismissing.(fes)) && error("Some FixedEffect has a missing value for reference or interaction")
     feM = FixedEffectMatrix(fes, sqrt.(weights.values), Val{method})
     y, iteration, converged = solve_residuals!(y, feM; maxiter = maxiter, tol = tol)
 end
 
 function solve_residuals!(X::AbstractMatrix, feM::AbstractFixedEffectMatrix; kwargs...)
-    iterations = Vector{Int}(undef, size(X, 2))
-    convergeds = Vector{Bool}(undef, size(X, 2))
-    for j in 1:size(X, 2)
-        #view disables simd
-        X[:, j], iteration, converged = solve_residuals!(X[:, j], feM; kwargs...)
-        iterations[j] = iteration
-        convergeds[j] = converged
+    iterations = Int[]
+    convergeds = Bool[]
+    for x in eachcol(X)
+        _, iteration, converged = solve_residuals!(x, feM; kwargs...)
+        push!(iterations, iteration)
+        push!(convergeds, converged)
     end
     return X, iterations, convergeds
 end
@@ -79,7 +78,7 @@ x = rand(10)
 solve_coefficients!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
-function solve_coefficients!(y::AbstractVector, fes::Vector{<: FixedEffect}, weights::AbstractWeights  = Weights(Ones{eltype(y)}(length(y))); method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8)
+function solve_coefficients!(y::AbstractVector, fes::AbstractVector{<: FixedEffect}, weights::AbstractWeights  = Weights(Ones{eltype(y)}(length(y))); method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8)
     any(ismissing.(fes)) && error("Some FixedEffect has a missing value for reference or interaction")
     feM = FixedEffectMatrix(fes, sqrt.(weights.values), Val{method})
     solve_coefficients!(y, feM; maxiter = maxiter, tol = tol)
@@ -170,7 +169,7 @@ function connectedcomponent!(component::Vector{Set{N}}, visited::Vector{Bool},
     end
 end
 
-function rescale!(fev::Vector{Vector{T}}, fes::Vector{<:FixedEffect}, 
+function rescale!(fev::Vector{Vector{T}}, fes::AbstractVector{<:FixedEffect}, 
                   idx_intercept,
                   components::Vector{Vector{Set{N}}}) where {T, N}
     adj1 = zero(T)
