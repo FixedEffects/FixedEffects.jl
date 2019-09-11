@@ -112,12 +112,12 @@ function mul!(y::AbstractVector, fem::FixedEffectLSMR,
                 fev::FixedEffectVector, α::Number, β::Number)
     rmul!(y, β)
     for (x, fe, cache) in zip(fev.fes, fem.fes, fem.caches)
-        helperN!(y, x, fe.refs, α, cache)
+        demean!(y, x, fe.refs, α, cache)
     end
     return y
 end
 
-function helperN!(y::AbstractVector, x::AbstractVector, refs::AbstractVector, 
+function demean!(y::AbstractVector, x::AbstractVector, refs::AbstractVector, 
                 α::Number, cache::AbstractVector)
     @simd ivdep for i in eachindex(y)
         @inbounds y[i] += x[refs[i]] * α * cache[i]
@@ -129,23 +129,17 @@ function mul!(fev::FixedEffectVector, Cfem::Adjoint{T, FixedEffectLSMR},
     fem = adjoint(Cfem)
     rmul!(fev, β)
     for (x, fe, cache) in zip(fev.fes, fem.fes, fem.caches)
-        helperC!(x, fe.refs, y, α, cache)
+        mean!(x, fe.refs, y, α, cache)
     end
     return fev
 end
 
-function helperC!(x::AbstractVector, refs::AbstractVector, y::AbstractVector, 
+function mean!(x::AbstractVector, refs::AbstractVector, y::AbstractVector, 
         α::Number, cache::AbstractVector)
    @simd ivdep for i in eachindex(y)
         @inbounds x[refs[i]] += y[i] * α * cache[i]
     end
 end
-
-##############################################################################
-##
-## Implement AbstractFixedEffectMatrix interface
-##
-##############################################################################\
 
 function solve!(feM::FixedEffectLSMR, r::AbstractVector; 
     tol::Real = 1e-8, maxiter::Integer = 100_000)
@@ -156,16 +150,22 @@ function solve!(feM::FixedEffectLSMR, r::AbstractVector;
     return div(ch.mvps, 2), ch.isconverged
 end
 
-function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
-    r .= convert(Vector{Float64}, r .* feM.sqrtw)
+##############################################################################
+##
+## Implement AbstractFixedEffectMatrix interface
+##
+##############################################################################\
+
+function solve_residuals!(r::AbstractVector{Float64}, feM::FixedEffectLSMR; kwargs...)
+    r .= r .* feM.sqrtw
     iterations, converged = solve!(feM, r; kwargs...)
     mul!(r, feM, feM.x, -1.0, 1.0)
     r .= r ./ feM.sqrtw
     return r, iterations, converged
 end
 
-function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
-    r .= convert(Vector{Float64}, r .* feM.sqrtw)
+function solve_coefficients!(r::AbstractVector{Float64}, feM::FixedEffectLSMR; kwargs...)
+    r .= r .* feM.sqrtw
     iterations, converged = solve!(feM, r; kwargs...)
     for (fe, scale) in zip(feM.x.fes, feM.scales)
         fe .*=  scale
@@ -191,6 +191,10 @@ function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector,
     FixedEffectLSMRParallel(fes, sqrtw)
 end
 
+function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRParallel; kwargs...)
+    solve_residuals!(r, FixedEffectMatrix(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
+end
+
 function solve_residuals!(X::AbstractMatrix, feM::FixedEffectLSMRParallel; kwargs...)
     iterations = zeros(Int, size(X, 2))
     convergeds = zeros(Bool, size(X, 2))
@@ -201,10 +205,6 @@ function solve_residuals!(X::AbstractMatrix, feM::FixedEffectLSMRParallel; kwarg
         convergeds[j] = result[j][3]
     end
     return X, iterations, convergeds
-end
-
-function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRParallel; kwargs...)
-    solve_residuals!(r, FixedEffectMatrix(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
 end
 
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRParallel, ; kwargs...)
@@ -226,6 +226,10 @@ end
 
 FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_threads}}) = FixedEffectLSMRThreads(fes, sqrtw)
 
+function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRThreads; kwargs...)
+    solve_residuals!(r, FixedEffectMatrix(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
+end
+
 function solve_residuals!(X::AbstractMatrix, feM::FixedEffectLSMRThreads; kwargs...)
    iterations = zeros(Int, size(X, 2))
    convergeds = zeros(Bool, size(X, 2))
@@ -237,9 +241,6 @@ function solve_residuals!(X::AbstractMatrix, feM::FixedEffectLSMRThreads; kwargs
    return X, iterations, convergeds
 end
 
-function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRThreads; kwargs...)
-    solve_residuals!(r, FixedEffectMatrix(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
-end
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRThreads; kwargs...)
     solve_coefficients!(r, FixedEffectMatrix(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
 end
