@@ -1,9 +1,8 @@
 
-# this type must defined solve_residuals!, solve_coefficients!, and fixedeffects
+# this type must defined solve_residuals!, solve_coefficients!
 abstract type AbstractFixedEffectMatrix end
 
 """
-
 Solve a least square problem for a set of FixedEffects
 
 `solve_residuals!(y, fes, weights; method = :lsmr, maxiter = 10000, tol = 1e-8)`
@@ -47,22 +46,6 @@ function solve_residuals!(X::AbstractMatrix, feM::AbstractFixedEffectMatrix; kwa
     end
     return X, iterations, convergeds
 end
-##############################################################################
-##
-## solve_coefficients!
-##
-## Fixed effects are generally not identified
-## We standardize the solution in the following way :
-## Mean within connected component of all fixed effects except the first
-## is zero
-##
-## Unique solution with two components, not really with more
-##
-## Connected component : Breadth-first search
-## components is an array of component
-## A component is an array of set (length is number of values taken)
-##
-##############################################################################
 
 """
 Solve a least square problem for a set of FixedEffects
@@ -82,9 +65,10 @@ Solve a least square problem for a set of FixedEffects
 * `b` : Solution of the least square problem
 * `iterations`: Number of iterations
 * `converged`: Did the algorithm converge?
-Fixed effects are generally not identified. We standardize the solution 
+Fixed effects are generally not unique. We standardize the solution 
 in the following way: the mean of fixed effects within connected components is zero
 (except for the first).
+This gives the unique solution in the case of two fixed effects.
 
 ### Examples
 ```julia
@@ -114,9 +98,13 @@ function normalize!(x, b::AbstractVector, fes::AbstractVector{<:FixedEffect}; kw
         components = connectedcomponent(view(fes, idx_intercept))
         rescale!(x, fes, idx_intercept, components)
     end
-    newfes = [x[j][fes[j].refs] for j in 1:length(fes)]
+    [x[j][fes[j].refs] for j in 1:length(fes)]
 end
 
+
+## Connected component : Breadth-first search
+## components is an array of component
+## A component is an array of set (length is number of values taken)
 function connectedcomponent(fes::AbstractVector{<:FixedEffect})
     # initialize
     where = initialize_where(fes)

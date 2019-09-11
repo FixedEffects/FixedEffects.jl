@@ -170,8 +170,7 @@ function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
     for (fe, scale) in zip(feM.x.fes, feM.scales)
         fe .*=  scale
     end 
-    newfes = normalize!(feM.x.fes, r, feM.fes; kwargs...)
-    return newfes, iterations, converged
+    normalize!(feM.x.fes, r, feM.fes; kwargs...), iterations, converged
 end
 
 ##############################################################################
@@ -238,7 +237,7 @@ function solve_residuals!(X::AbstractMatrix, feM::FixedEffectLSMRThreads; kwargs
    return X, iterations, convergeds
 end
 
-function solve_residuals!( r::AbstractVector, feM::FixedEffectLSMRThreads; kwargs...)
+function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRThreads; kwargs...)
     solve_residuals!(r, FixedEffectMatrix(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
 end
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRThreads; kwargs...)
