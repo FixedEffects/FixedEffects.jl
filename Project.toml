@@ -1,6 +1,6 @@
 name = "FixedEffects"
 uuid = "c8885935-8500-56a7-9867-7708b20db0eb"
-version = "0.1.2"
+version = "0.1.3"
 
 [deps]
 CategoricalArrays = "324d7699-5711-5eae-9e2f-1d82baa6b597"
