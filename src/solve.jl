@@ -101,19 +101,20 @@ function solve_coefficients!(y::AbstractVector, fes::Vector{<: FixedEffect}, wei
     solve_coefficients!(y, feM; maxiter = maxiter, tol = tol)
 end
 
-function normalize!(x, b::AbstractVector, feM::AbstractFixedEffectMatrix; kwargs...)
+##############################################################################
+##
+## normalize!
+## 
+##############################################################################
+
+function normalize!(x, b::AbstractVector, fes::AbstractVector{<:FixedEffect}; kwargs...)
     # The solution is generally not unique. Find connected components and scale accordingly
-    findintercept = findall(fe -> isa(fe.interaction, Ones), fixedeffects(feM))
-    if length(findintercept) >= 2
-        components = connectedcomponent(view(fixedeffects(feM), findintercept))
-        rescale!(x, feM, findintercept, components)
+    idx_intercept = findall(fe -> isa(fe.interaction, Ones), fes)
+    if length(idx_intercept) >= 2
+        components = connectedcomponent(view(fes, idx_intercept))
+        rescale!(x, fes, idx_intercept, components)
     end
-    fes = fixedeffects(feM)
-    newfes = [zeros(length(b)) for j in 1:length(fes)]
-    for j in 1:length(fes)
-        newfes[j] = x[j][fes[j].refs]
-    end
-    return newfes
+    newfes = [x[j][fes[j].refs] for j in 1:length(fes)]
 end
 
 function connectedcomponent(fes::AbstractVector{<:FixedEffect})
@@ -181,14 +182,13 @@ function connectedcomponent!(component::Vector{Set{N}}, visited::Vector{Bool},
     end
 end
 
-function rescale!(fev::Vector{Vector{T}}, feM::AbstractFixedEffectMatrix, 
-                  findintercept,
+function rescale!(fev::Vector{Vector{T}}, fes::Vector{<:FixedEffect}, 
+                  idx_intercept,
                   components::Vector{Vector{Set{N}}}) where {T, N}
-    fes = fixedeffects(feM)
     adj1 = zero(T)
-    i1 = findintercept[1]
+    i1 = idx_intercept[1]
     for component in components
-        for i in reverse(findintercept)
+        for i in reverse(idx_intercept)
             # demean all fixed effects except the first
             if i != 1
                 adji = zero(T)
