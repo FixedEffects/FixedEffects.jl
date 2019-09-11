@@ -1,3 +1,5 @@
+
+# this type must defined solve_residuals!, solve_coefficients!, and fixedeffects
 abstract type AbstractFixedEffectMatrix end
 
 """
@@ -26,22 +28,28 @@ using  FixedEffects
 p1 = repeat(1:5, inner = 2)
 p2 = repeat(1:5, outer = 2)
 solve_residuals!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
-solve_residuals!(rand(10, 5), [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
 function solve_residuals!(y::Union{AbstractVector, AbstractMatrix}, fes::Vector{<: FixedEffect}, weights::AbstractWeights = Weights(Ones{eltype(y)}(size(y, 1))); method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8)
     any(ismissing.(fes)) && error("Some FixedEffect has a missing value for reference or interaction")
-    sqrtw = sqrt.(weights.values)
-    y .= y .* sqrtw
-    fep = FixedEffectMatrix(fes, sqrtw, Val{method})
-    y, iteration, converged = solve_residuals!(y, fep; maxiter = maxiter, tol = tol)
-    y .= y ./ sqrtw
-    return y, iteration, converged
+    feM = FixedEffectMatrix(fes, sqrt.(weights.values), Val{method})
+    y, iteration, converged = solve_residuals!(y, feM; maxiter = maxiter, tol = tol)
 end
 
+function solve_residuals!(X::AbstractMatrix, feM::AbstractFixedEffectMatrix; kwargs...)
+    iterations = Vector{Int}(undef, size(X, 2))
+    convergeds = Vector{Bool}(undef, size(X, 2))
+    for j in 1:size(X, 2)
+        #view disables simd
+        X[:, j], iteration, converged = solve_residuals!(X[:, j], feM; kwargs...)
+        iterations[j] = iteration
+        convergeds[j] = converged
+    end
+    return X, iterations, convergeds
+end
 ##############################################################################
 ##
-## Get fixed effects
+## solve_coefficients!
 ##
 ## Fixed effects are generally not identified
 ## We standardize the solution in the following way :
@@ -74,6 +82,9 @@ Solve a least square problem for a set of FixedEffects
 * `b` : Solution of the least square problem
 * `iterations`: Number of iterations
 * `converged`: Did the algorithm converge?
+Fixed effects are generally not identified. We standardize the solution 
+in the following way: the mean of fixed effects within connected components is zero
+(except for the first).
 
 ### Examples
 ```julia
@@ -86,36 +97,24 @@ solve_coefficients!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 """
 function solve_coefficients!(y::AbstractVector, fes::Vector{<: FixedEffect}, weights::AbstractWeights  = Weights(Ones{eltype(y)}(length(y))); method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8)
     any(ismissing.(fes)) && error("Some FixedEffect has a missing value for reference or interaction")
-    sqrtw = sqrt.(weights.values)
-    y .= y .* sqrtw
-    fep = FixedEffectMatrix(fes, sqrtw, Val{method})
-    newfes, iteration, converged = solve_coefficients!(y, fep; maxiter = maxiter, tol = tol)
-    return newfes, iteration, converged
+    feM = FixedEffectMatrix(fes, sqrt.(weights.values), Val{method})
+    solve_coefficients!(y, feM; maxiter = maxiter, tol = tol)
 end
 
-
-
-function solve_coefficients!(b::AbstractVector, fep::AbstractFixedEffectMatrix; kwargs...)
-    # solve Ax = b
-    x, iterations, converged = _solve_coefficients!(b, fep; kwargs...)
-    if !converged 
-       warn("getfe did not converge")
-    end
+function normalize!(x, b::AbstractVector, feM::AbstractFixedEffectMatrix; kwargs...)
     # The solution is generally not unique. Find connected components and scale accordingly
-    findintercept = findall(fe -> isa(fe.interaction, Ones), get_fes(fep))
+    findintercept = findall(fe -> isa(fe.interaction, Ones), fixedeffects(feM))
     if length(findintercept) >= 2
-        components = connectedcomponent(view(get_fes(fep), findintercept))
-        rescale!(x, fep, findintercept, components)
+        components = connectedcomponent(view(fixedeffects(feM), findintercept))
+        rescale!(x, feM, findintercept, components)
     end
-
-    fes = get_fes(fep)
+    fes = fixedeffects(feM)
     newfes = [zeros(length(b)) for j in 1:length(fes)]
     for j in 1:length(fes)
         newfes[j] = x[j][fes[j].refs]
     end
-    return newfes, iterations, converged
+    return newfes
 end
-
 
 function connectedcomponent(fes::AbstractVector{<:FixedEffect})
     # initialize
@@ -182,10 +181,10 @@ function connectedcomponent!(component::Vector{Set{N}}, visited::Vector{Bool},
     end
 end
 
-function rescale!(fev::Vector{Vector{T}}, fep::AbstractFixedEffectMatrix, 
+function rescale!(fev::Vector{Vector{T}}, feM::AbstractFixedEffectMatrix, 
                   findintercept,
                   components::Vector{Vector{Set{N}}}) where {T, N}
-    fes = get_fes(fep)
+    fes = fixedeffects(feM)
     adj1 = zero(T)
     i1 = findintercept[1]
     for component in components

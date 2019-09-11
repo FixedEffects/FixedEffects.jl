@@ -35,13 +35,12 @@ solve_coefficients!
 ## Load files
 ##
 ##############################################################################
-include("utils/lsmr.jl")
-include("utils/group.jl")
+include("linearsolvers/lsmr.jl")
 include("FixedEffect.jl")
-include("FixedEffectMatrix/solve.jl")
-include("FixedEffectMatrix/LSMR.jl")
+include("solve.jl")
+include("AbstractFixedEffectMatrix/FixedEffectLinearMap.jl")
 if Base.USE_GPL_LIBS
-    include("FixedEffectMatrix/Factorization.jl")
+    include("AbstractFixedEffectMatrix/FixedEffectCSC.jl")
 end
 
 

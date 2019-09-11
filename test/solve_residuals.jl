@@ -6,9 +6,9 @@ x = rand(10)
 xs = rand(10, 5)
 
 if Base.USE_GPL_LIBS
-	method_s = [:cholesky, :qr, :lsmr, :lsmr_parallel, :lsmr_threads]
+	method_s = [:cholesky, :qr, :lsmr, :lsmr_threads, :lsmr_parallel]
 else
-	method_s = [:lsmr, :lsmr_parallel, :lsmr_threads]
+	method_s = [:lsmr, :lsmr_threads, :lsmr_parallel]
 end
 
 for method in method_s
