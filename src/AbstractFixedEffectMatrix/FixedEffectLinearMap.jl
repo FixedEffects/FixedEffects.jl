@@ -6,17 +6,25 @@
 ## copyto!, fill!, rmul!, axpy!, norm
 ##
 ##############################################################################
+struct OLSCoefficient{T}
+    a::T
+    b::T
+end
+Base.abs2(x::OLSCoefficient) = a^2 + b^2
+Base.:*(x::OLSCoefficient, y::Number) = OLSCoefficient(x.a * y, x.b * y)
+Base.:+(x::OLSCoefficient, y::Number) = OLSCoefficient(x.a + y, x.b + y)
+Base.:+(x::OLSCoefficient, y::OLSCoefficient) = OLSCoefficient(x.a + y.a, x.b + y.b)
 
 struct FixedEffectVector{T}
-    fes::Vector{Vector{T}}
+    fes::Vector{Vector{OLSCoefficient{T}}}
 end
 
 function FixedEffectVector(fes::Vector{<:FixedEffect})
-    FixedEffectVector([zeros(fe.n) for fe in fes])
+    FixedEffectVector([[OLSCoefficient(0.0, 0.0) for _ in 1:fe.n] for fe in fes])
 end
 
 eltype(fem::FixedEffectVector{T}) where {T} = T
-length(fev::FixedEffectVector) = sum(length(x) for x in fev.fes)
+length(fev::FixedEffectVector) = sum(2 * length(x) for fe in fev.fes)
 norm(fev::FixedEffectVector) = sqrt(sum(sum(abs2, fe) for fe in  fev.fes))
 
 function fill!(fev::FixedEffectVector, x)
@@ -112,20 +120,30 @@ function mul!(y::AbstractVector, fem::FixedEffectLSMR,
                 fev::FixedEffectVector, α::Number, β::Number)
     rmul!(y, β)
     for (x, fe, cache) in zip(fev.fes, fem.fes, fem.caches)
-        demean!(y, x, fe.refs, α, cache)
+        demean!(y, x, fe, α, cache)
     end
     return y
 end
 
-function demean!(y::AbstractVector, x::AbstractVector, refs::AbstractVector, 
-                α::Number, cache::AbstractVector)
+
+function demean!(y::AbstractVector, x::AbstractVector, fe::FixedEffectVector{R, I, Val{false}}, 
+                α::Number, cache::AbstractVector) where {R, I, U}
     @simd ivdep for i in eachindex(y)
-        @inbounds y[i] += x[refs[i]] * α * cache[i]
+        @inbounds y[i] += α * x[refs[i]] * cache[i]
     end
 end
 
-function mul!(fev::FixedEffectVector, Cfem::Adjoint{T, FixedEffectLSMR},
-                y::AbstractVector, α::Number, β::Number) where {T}
+function demean!(y::AbstractVector, x::AbstractVector, fe::FixedEffectVector{R, I, Val{true}}, 
+                α::Number, cache::AbstractVector) where {R, I, U}
+    @simd ivdep for i in eachindex(y)
+        @inbounds y[i] += α * (x[refs[i]] * α * cache[i]
+    end
+end
+
+
+
+function mul!(fev::FixedEffectVector, Cfem::Adjoint{T, FixedEffectLSMR{N}},
+                y::AbstractVector, α::Number, β::Number) where {T, N}
     fem = adjoint(Cfem)
     rmul!(fev, β)
     for (x, fe, cache) in zip(fev.fes, fem.fes, fem.caches)
@@ -137,7 +155,7 @@ end
 function mean!(x::AbstractVector, refs::AbstractVector, y::AbstractVector, 
         α::Number, cache::AbstractVector)
    @simd ivdep for i in eachindex(y)
-        @inbounds x[refs[i]] += y[i] * α * cache[i]
+        @inbounds x[refs[i]] += α * y[i] * cache[i]
     end
 end
 

@@ -16,4 +16,5 @@ X = rand(N, 10)
 
 X = rand(N, 20)
 @time solve_residuals!(X, [FixedEffect(id1), FixedEffect(id2)])
+#   5.562212 seconds (1.51 k allocations: 235.145 MiB, 0.07% gc time)
 @time solve_residuals!(X, [FixedEffect(id1), FixedEffect(id2)], method = :lsmr_threads)
