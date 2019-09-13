@@ -1,3 +1,6 @@
+# to find preconditioner for FixedEffect with crossing, use orthorormal decomposition of a 2x2 X'X matrix
+# 1/ (sum (x_i - xbar)^2)) (sum xi^2, - sum x_i; -sum x_i, 1))
+
 ##############################################################################
 ## 
 ## FixedEffectVector : vector x in A'Ax = A'b
