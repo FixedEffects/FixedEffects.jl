@@ -105,27 +105,25 @@ function components(fes::AbstractVector{<:FixedEffect})
     for i in eachindex(visited)
         if !visited[i]
             # create new component
-            component_vec = Set{Int}[Set{Int}() for _ in 1:length(refsrev_vec)]
+            component_vec = Set{UInt32}[Set{UInt32}() for _ in 1:length(refsrev_vec)]
             # find all elements of this new component
             tovisit = Set{Int}(i)
             while !isempty(tovisit)
-                i = pop!(tovisit)
                 # mark index as visited
-                visited[i] = true
                 for (component, refs, refsrev) in zip(component_vec, refs_vec, refsrev_vec)
+                    ref = refs[i]
                     # if group is not in component yet
-                    if !(refs[i] in component)
+                    if ref ∉ component
                         # mark group as encountered
-                        push!(component, refs[i])
+                        push!(component, ref)
                         # visit other observations in same group
-                        # if it has not been visited yet (otherwise i is going to be on the list)
-                        for k in refsrev[refs[i]]
-                            if !visited[k]
-                                push!(tovisit, k)
-                            end
+                        for k in refsrev[ref]
+                            push!(tovisit, k)
                         end
                     end
                 end
+                i = pop!(tovisit)
+                visited[i] = true
             end            
             push!(out, component_vec)
         end
