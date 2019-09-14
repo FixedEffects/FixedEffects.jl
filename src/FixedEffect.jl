@@ -94,9 +94,9 @@ function refsrev(fe::FixedEffect)
     return out
  end
 
-## Connected component : Breadth-first search
-## Returns a vector of all components
-## A component is a vector that, for each fixed effect, has all the refs that are included in id.
+# Returns a vector of all components
+# A component is a vector that, for each fixed effect, 
+# contains all the refs that are included in the component.
 function components(fes::AbstractVector{<:FixedEffect})
     refs_vec = Vector{UInt32}[fe.refs for fe in fes]
     refsrev_vec = Vector{Vector{Int}}[refsrev(fe) for fe in fes]
@@ -104,12 +104,11 @@ function components(fes::AbstractVector{<:FixedEffect})
     out = Vector{Set{Int}}[]
     for i in eachindex(visited)
         if !visited[i]
-            # create new component
+            # obs not visited yet, so create new component
             component_vec = Set{UInt32}[Set{UInt32}() for _ in 1:length(refsrev_vec)]
-            # find all elements of this new component
+            # visit all obs in the same components
             tovisit = Set{Int}(i)
             while !isempty(tovisit)
-                # mark index as visited
                 for (component, refs, refsrev) in zip(component_vec, refs_vec, refsrev_vec)
                     ref = refs[i]
                     # if group is not in component yet
@@ -120,6 +119,7 @@ function components(fes::AbstractVector{<:FixedEffect})
                         union!(tovisit, refsrev[ref])
                     end
                 end
+                # mark obs as visited
                 i = pop!(tovisit)
                 visited[i] = true
             end            
