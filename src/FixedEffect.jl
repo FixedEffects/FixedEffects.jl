@@ -139,23 +139,22 @@ end
 ## 
 ##############################################################################
 
-function normalize!(fecoefs::AbstractVector{Vector{T}}, fes::AbstractVector{<:FixedEffect}; kwargs...) where {T}
+function normalize!(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVector{<:FixedEffect}; kwargs...)
     # The solution is generally not unique. Find connected components and scale accordingly
     idx_intercept = findall(fe -> isa(fe.interaction, Ones), fes)
     if length(idx_intercept) >= 2
-        rescale!(view(fecoefs, idx_intercept), view(fes, idx_intercept), 
-            components(view(fes, idx_intercept)))
+        rescale!(view(fecoefs, idx_intercept), view(fes, idx_intercept))
     end
     return fecoefs
 end
 
-function rescale!(fecoefs::AbstractVector{Vector{T}}, fes::AbstractVector{<:FixedEffect}, components) where {T, N}
-    for component_vec in components
-        m = zero(T)
+function rescale!(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVector{<:FixedEffect})
+    for component_vec in components(fes)
+        m = 0.0
         # demean all fixed effects except the first
         for j in length(fecoefs):(-1):2
             fe_coef, component = fecoefs[j], component_vec[j]
-            mj = zero(T)
+            mj = 0.0
             for k in component
                 mj += fe_coef[k]
             end
@@ -173,6 +172,6 @@ function rescale!(fecoefs::AbstractVector{Vector{T}}, fes::AbstractVector{<:Fixe
     end
 end
 
-function full(fecoefs::AbstractVector{Vector{T}}, fes::AbstractVector{<:FixedEffect}) where {T}
+function full(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVector{<:FixedEffect})
     [fecoef[fe.refs] for (fecoef, fe) in zip(fecoefs, fes)]
 end
