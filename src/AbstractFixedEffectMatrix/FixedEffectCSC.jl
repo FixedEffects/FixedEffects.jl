@@ -107,5 +107,5 @@ function solve_coefficients!(r::AbstractVector, feM::Union{FixedEffectCholesky, 
         iend = istart + length(unique(fe.refs)) - 1
         push!(out, x[istart:iend])
     end
-    normalize!(out, r, feM.fes; kwargs...), 1, true
+    full(normalize!(out, feM.fes; kwargs...), feM.fes), 1, true
 end

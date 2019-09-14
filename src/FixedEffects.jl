@@ -35,7 +35,7 @@ solve_coefficients!
 ## Load files
 ##
 ##############################################################################
-include("linearsolvers/lsmr.jl")
+include("utils/lsmr.jl")
 include("FixedEffect.jl")
 include("solve.jl")
 include("AbstractFixedEffectMatrix/FixedEffectLinearMap.jl")

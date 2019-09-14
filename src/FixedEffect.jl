@@ -37,6 +37,7 @@ function Base.show(io::IO, fe::FixedEffect)
 end
 
 Base.ismissing(fe::FixedEffect) = any(fe.refs .== 0)  | ismissing(fe.interaction)
+Base.length(fe::FixedEffect) = length(fe.refs)
 
 ##############################################################################
 ##
@@ -77,4 +78,101 @@ function factorize!(refs::Vector{T}) where {T}
     end
     Tout = has_missing ? Union{Int, Missing} : Int
     CategoricalArray{Tout, 1}(newrefs, CategoricalPool(collect(1:(length(uu)-has_missing))))
+end
+
+##############################################################################
+##
+## Find connected components
+## 
+##############################################################################
+# Return a vector of sets that contains the indices of each unique value
+function Base.Set(fe::FixedEffect)
+    out = [Set{Int}() for _ in 1:fe.n]
+    for i in eachindex(fe.refs)
+         push!(out[fe.refs[i]], i)
+    end
+    return out
+ end
+
+## Connected component : Breadth-first search
+## Returns a vector of all components
+## A component is a vector that, for each fixed effect, has all the refs that are included in id.
+function components(fes::AbstractVector{<:FixedEffect})
+    refs_vec = Vector{UInt32}[fe.refs for fe in fes]
+    set_vec = Vector{Set{Int}}[Set(fe) for fe in fes]
+    visited = falses(length(refs_vec[1]))
+    out = Vector{Set{Int}}[]
+    for i in eachindex(visited)
+        if !visited[i]
+            # create new component
+            component_vec = Set{Int}[Set{Int}() for _ in 1:length(set_vec)]
+            # find all elements of this new component
+            tovisit = Set{Int}(i)
+            while !isempty(tovisit)
+                i = pop!(tovisit)
+                # mark index as visited
+                visited[i] = true
+                for (component, refs, set) in zip(component_vec, refs_vec, set_vec)
+                    # if group is not in component yet
+                    if !(refs[i] in component)
+                        # mark group as encountered
+                        push!(component, refs[i])
+                        # visit other observations in same group
+                        # if it has not been visited yet (otherwise i is going to be on the list)
+                        for k in set[refs[i]]
+                            if !visited[k]
+                                push!(tovisit, k)
+                            end
+                        end
+                    end
+                end
+            end            
+            push!(out, component_vec)
+        end
+    end
+    return out
+end
+
+##############################################################################
+##
+## normalize! a vector of fixedeffect coefficients using connected components
+## 
+##############################################################################
+
+function normalize!(fecoefs::AbstractVector{Vector{T}}, fes::AbstractVector{<:FixedEffect}; kwargs...) where {T}
+    # The solution is generally not unique. Find connected components and scale accordingly
+    idx_intercept = findall(fe -> isa(fe.interaction, Ones), fes)
+    if length(idx_intercept) >= 2
+        rescale!(view(fecoefs, idx_intercept), view(fes, idx_intercept), 
+            components(view(fes, idx_intercept)))
+    end
+    return fecoefs
+end
+
+function rescale!(fecoefs::AbstractVector{Vector{T}}, fes::AbstractVector{<:FixedEffect}, components) where {T, N}
+    for component_vec in components
+        m = zero(T)
+        # demean all fixed effects except the first
+        for j in length(fecoefs):(-1):2
+            fe_coef, component = fecoefs[j], component_vec[j]
+            mj = zero(T)
+            for k in component
+                mj += fe_coef[k]
+            end
+            mj = mj / length(component)
+            for k in component
+                fe_coef[k] -= mj
+            end
+            m += mj
+        end
+        # rescale the first fixed effects
+        fe_coef, component = fecoefs[1], component_vec[1]
+        for k in component
+            fe_coef[k] += m
+        end
+    end
+end
+
+function full(fecoefs::AbstractVector{Vector{T}}, fes::AbstractVector{<:FixedEffect}) where {T}
+    [fecoef[fe.refs] for (fecoef, fe) in zip(fecoefs, fes)]
 end

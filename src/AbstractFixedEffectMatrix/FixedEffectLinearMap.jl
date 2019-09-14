@@ -1,50 +1,52 @@
 ##############################################################################
 ## 
-## FixedEffectVector : vector x in A'Ax = A'b
+## FixedEffectCoefficients : vector x in A'Ax = A'b
 ##
 ## We define these methods used in lsmr! (duck typing): 
 ## copyto!, fill!, rmul!, axpy!, norm
 ##
 ##############################################################################
 
-struct FixedEffectVector{T}
-    fes::Vector{Vector{T}}
+struct FixedEffectCoefficients{T}
+    x::Vector{Vector{T}}
+end
+Base.iterate(xs::FixedEffectCoefficients) = iterate(xs.x)
+Base.iterate(xs::FixedEffectCoefficients, state) = iterate(xs.x, state)
+
+function FixedEffectCoefficients(fes::Vector{<:FixedEffect})
+    FixedEffectCoefficients([zeros(fe.n) for fe in fes])
 end
 
-function FixedEffectVector(fes::Vector{<:FixedEffect})
-    FixedEffectVector([zeros(fe.n) for fe in fes])
-end
+eltype(xs::FixedEffectCoefficients{T}) where {T} = T
+length(xs::FixedEffectCoefficients) = sum(length(x) for x in xs)
+norm(xs::FixedEffectCoefficients) = sqrt(sum(sum(abs2, x) for x in xs))
 
-eltype(fem::FixedEffectVector{T}) where {T} = T
-length(fev::FixedEffectVector) = sum(length(x) for x in fev.fes)
-norm(fev::FixedEffectVector) = sqrt(sum(sum(abs2, fe) for fe in  fev.fes))
-
-function fill!(fev::FixedEffectVector, x)
-    for fe in fev.fes
-        fill!(fe, x)
+function fill!(xs::FixedEffectCoefficients, α)
+    for x in xs
+        fill!(x, α)
     end
-    return fev
+    return xs
 end
 
-function rmul!(fev::FixedEffectVector, α::Number)
-    for fe in fev.fes
-        rmul!(fe, α)
+function rmul!(xs::FixedEffectCoefficients, α::Number)
+    for x in xs
+        rmul!(x, α)
     end
-    return fev
+    return xs
 end
 
-function copyto!(fev1::FixedEffectVector, fev2::FixedEffectVector)
-    for (fe1, fe2) in zip(fev1.fes, fev2.fes)
-        copyto!(fe1, fe2)
+function copyto!(xs1::FixedEffectCoefficients, xs2::FixedEffectCoefficients)
+    for (x1, x2) in zip(xs1, xs2)
+        copyto!(x1, x2)
     end
-    return fev1
+    return xs1
 end
 
-function axpy!(α::Number, fev1::FixedEffectVector, fev2::FixedEffectVector)
-    for (fe1, fe2) in zip(fev1.fes, fev2.fes)
-        axpy!(α, fe1, fe2)
+function axpy!(α::Number, xs1::FixedEffectCoefficients, xs2::FixedEffectCoefficients)
+    for (x1, x2) in zip(xs1, xs2)
+        axpy!(α, x1, x2)
     end
-    return fev2
+    return xs2
 end
 
 ##############################################################################
@@ -63,10 +65,10 @@ struct FixedEffectLSMR <: AbstractFixedEffectMatrix
     fes::Vector{<:FixedEffect}
     scales::Vector{Vector{Float64}}
     caches::Vector{Vector{Float64}}
-    x::FixedEffectVector{Float64}
-    v::FixedEffectVector{Float64}
-    h::FixedEffectVector{Float64}
-    hbar::FixedEffectVector{Float64}
+    xs::FixedEffectCoefficients{Float64}
+    v::FixedEffectCoefficients{Float64}
+    h::FixedEffectCoefficients{Float64}
+    hbar::FixedEffectCoefficients{Float64}
     u::Vector{Float64}
     sqrtw::AbstractVector{Float64}
 end
@@ -74,10 +76,10 @@ end
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr}})
     scales = [_scale(fe, sqrtw) for fe in fes] 
     caches = [_cache(fe, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
-    x = FixedEffectVector(fes)
-    v = FixedEffectVector(fes)
-    h = FixedEffectVector(fes)
-    hbar = FixedEffectVector(fes)
+    x = FixedEffectCoefficients(fes)
+    v = FixedEffectCoefficients(fes)
+    h = FixedEffectCoefficients(fes)
+    hbar = FixedEffectCoefficients(fes)
     u = zeros(length(fes[1].refs))
     return FixedEffectLSMR(fes, scales, caches, x, v, h, hbar, u, sqrtw)
 end
@@ -109,9 +111,9 @@ function size(fem::FixedEffectLSMR, dim::Integer)
 end
 
 function mul!(y::AbstractVector, fem::FixedEffectLSMR, 
-                fev::FixedEffectVector, α::Number, β::Number)
+                xs::FixedEffectCoefficients, α::Number, β::Number)
     rmul!(y, β)
-    for (x, fe, cache) in zip(fev.fes, fem.fes, fem.caches)
+    for (x, fe, cache) in zip(xs, fem.fes, fem.caches)
         demean!(y, x, fe.refs, α, cache)
     end
     return y
@@ -124,14 +126,14 @@ function demean!(y::AbstractVector, x::AbstractVector, refs::AbstractVector,
     end
 end
 
-function mul!(fev::FixedEffectVector, Cfem::Adjoint{T, FixedEffectLSMR},
+function mul!(xs::FixedEffectCoefficients, Cfem::Adjoint{T, FixedEffectLSMR},
                 y::AbstractVector, α::Number, β::Number) where {T}
     fem = adjoint(Cfem)
-    rmul!(fev, β)
-    for (x, fe, cache) in zip(fev.fes, fem.fes, fem.caches)
+    rmul!(xs, β)
+    for (x, fe, cache) in zip(xs, fem.fes, fem.caches)
         mean!(x, fe.refs, y, α, cache)
     end
-    return fev
+    return xs
 end
 
 function mean!(x::AbstractVector, refs::AbstractVector, y::AbstractVector, 
@@ -143,9 +145,9 @@ end
 
 function solve!(feM::FixedEffectLSMR, r::AbstractVector; 
     tol::Real = 1e-8, maxiter::Integer = 100_000)
-    fill!(feM.x, 0.0)
+    fill!(feM.xs, 0.0)
     copyto!(feM.u, r)
-    x, ch = lsmr!(feM.x, feM, feM.u, feM.v, feM.h, feM.hbar; 
+    x, ch = lsmr!(feM.xs, feM, feM.u, feM.v, feM.h, feM.hbar; 
         atol = tol, btol = tol, conlim = 1e8, maxiter = maxiter)
     return div(ch.mvps, 2), ch.isconverged
 end
@@ -159,7 +161,7 @@ end
 function solve_residuals!(r::AbstractVector{Float64}, feM::FixedEffectLSMR; kwargs...)
     r .= r .* feM.sqrtw
     iterations, converged = solve!(feM, r; kwargs...)
-    mul!(r, feM, feM.x, -1.0, 1.0)
+    mul!(r, feM, feM.xs, -1.0, 1.0)
     r .= r ./ feM.sqrtw
     return r, iterations, converged
 end
@@ -167,10 +169,10 @@ end
 function solve_coefficients!(r::AbstractVector{Float64}, feM::FixedEffectLSMR; kwargs...)
     r .= r .* feM.sqrtw
     iterations, converged = solve!(feM, r; kwargs...)
-    for (fe, scale) in zip(feM.x.fes, feM.scales)
-        fe .*=  scale
+    for (x, scale) in zip(feM.xs, feM.scales)
+        x .*=  scale
     end 
-    normalize!(feM.x.fes, r, feM.fes; kwargs...), iterations, converged
+    full(normalize!(feM.xs.x, feM.fes; kwargs...), feM.fes), iterations, converged
 end
 
 ##############################################################################
