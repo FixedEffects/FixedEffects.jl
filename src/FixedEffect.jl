@@ -138,9 +138,7 @@ end
 function normalize!(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVector{<:FixedEffect}; kwargs...)
     # The solution is generally not unique. Find connected components and scale accordingly
     idx = findall(fe -> isa(fe.interaction, Ones), fes)
-    if length(idx) >= 2
-        rescale!(view(fecoefs, idx), view(fes, idx))
-    end
+    length(idx) >= 2 && rescale!(view(fecoefs, idx), view(fes, idx))
     return fecoefs
 end
 

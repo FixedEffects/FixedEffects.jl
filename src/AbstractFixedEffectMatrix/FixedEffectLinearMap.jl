@@ -111,35 +111,35 @@ function size(fem::FixedEffectLSMR, dim::Integer)
 end
 
 function mul!(y::AbstractVector, fem::FixedEffectLSMR, 
-                xs::FixedEffectCoefficients, α::Number, β::Number)
+                fecoefs::FixedEffectCoefficients, α::Number, β::Number)
     rmul!(y, β)
-    for (x, fe, cache) in zip(xs, fem.fes, fem.caches)
-        demean!(y, x, fe.refs, α, cache)
+    for (fecoef, fe, cache) in zip(fecoefs, fem.fes, fem.caches)
+        demean!(y, fecoef, fe.refs, α, cache)
     end
     return y
 end
 
-function demean!(y::AbstractVector, x::AbstractVector, refs::AbstractVector, 
+function demean!(y::AbstractVector, fecoef::AbstractVector, refs::AbstractVector, 
                 α::Number, cache::AbstractVector)
     @simd ivdep for i in eachindex(y)
-        @inbounds y[i] += x[refs[i]] * α * cache[i]
+        @inbounds y[i] += fecoef[refs[i]] * α * cache[i]
     end
 end
 
-function mul!(xs::FixedEffectCoefficients, Cfem::Adjoint{T, FixedEffectLSMR},
+function mul!(fecoefs::FixedEffectCoefficients, Cfem::Adjoint{T, FixedEffectLSMR},
                 y::AbstractVector, α::Number, β::Number) where {T}
     fem = adjoint(Cfem)
-    rmul!(xs, β)
-    for (x, fe, cache) in zip(xs, fem.fes, fem.caches)
-        mean!(x, fe.refs, y, α, cache)
+    rmul!(fecoefs, β)
+    for (fecoef, fe, cache) in zip(fecoefs, fem.fes, fem.caches)
+        mean!(fecoef, fe.refs, y, α, cache)
     end
-    return xs
+    return fecoefs
 end
 
-function mean!(x::AbstractVector, refs::AbstractVector, y::AbstractVector, 
+function mean!(fecoef::AbstractVector, refs::AbstractVector, y::AbstractVector, 
         α::Number, cache::AbstractVector)
    @simd ivdep for i in eachindex(y)
-        @inbounds x[refs[i]] += y[i] * α * cache[i]
+        @inbounds fecoef[refs[i]] += y[i] * α * cache[i]
     end
 end
 
