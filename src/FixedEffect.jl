@@ -86,10 +86,10 @@ end
 ## 
 ##############################################################################
 # Return a vector of sets that contains the indices of each unique value
-function Base.Set(fe::FixedEffect)
-    out = [Set{Int}() for _ in 1:fe.n]
+function refsrev(fe::FixedEffect)
+    out = Vector{Int}[Int[] for _ in 1:fe.n]
     for i in eachindex(fe.refs)
-         push!(out[fe.refs[i]], i)
+        push!(out[fe.refs[i]], i)
     end
     return out
  end
@@ -99,27 +99,27 @@ function Base.Set(fe::FixedEffect)
 ## A component is a vector that, for each fixed effect, has all the refs that are included in id.
 function components(fes::AbstractVector{<:FixedEffect})
     refs_vec = Vector{UInt32}[fe.refs for fe in fes]
-    set_vec = Vector{Set{Int}}[Set(fe) for fe in fes]
+    refsrev_vec = Vector{Vector{Int}}[refsrev(fe) for fe in fes]
     visited = falses(length(refs_vec[1]))
     out = Vector{Set{Int}}[]
     for i in eachindex(visited)
         if !visited[i]
             # create new component
-            component_vec = Set{Int}[Set{Int}() for _ in 1:length(set_vec)]
+            component_vec = Set{Int}[Set{Int}() for _ in 1:length(refsrev_vec)]
             # find all elements of this new component
             tovisit = Set{Int}(i)
             while !isempty(tovisit)
                 i = pop!(tovisit)
                 # mark index as visited
                 visited[i] = true
-                for (component, refs, set) in zip(component_vec, refs_vec, set_vec)
+                for (component, refs, refsrev) in zip(component_vec, refs_vec, refsrev_vec)
                     # if group is not in component yet
                     if !(refs[i] in component)
                         # mark group as encountered
                         push!(component, refs[i])
                         # visit other observations in same group
                         # if it has not been visited yet (otherwise i is going to be on the list)
-                        for k in set[refs[i]]
+                        for k in refsrev[refs[i]]
                             if !visited[k]
                                 push!(tovisit, k)
                             end
@@ -153,21 +153,21 @@ function rescale!(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVect
         m = 0.0
         # demean all fixed effects except the first
         for j in length(fecoefs):(-1):2
-            fe_coef, component = fecoefs[j], component_vec[j]
+            fecoef, component = fecoefs[j], component_vec[j]
             mj = 0.0
             for k in component
-                mj += fe_coef[k]
+                mj += fecoef[k]
             end
             mj = mj / length(component)
             for k in component
-                fe_coef[k] -= mj
+                fecoef[k] -= mj
             end
             m += mj
         end
         # rescale the first fixed effects
-        fe_coef, component = fecoefs[1], component_vec[1]
+        fecoef, component = fecoefs[1], component_vec[1]
         for k in component
-            fe_coef[k] += m
+            fecoef[k] += m
         end
     end
 end
