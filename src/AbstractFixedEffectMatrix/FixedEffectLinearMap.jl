@@ -21,7 +21,7 @@ eltype(xs::FixedEffectCoefficients{T}) where {T} = T
 length(xs::FixedEffectCoefficients) = sum(length(x) for x in xs)
 norm(xs::FixedEffectCoefficients) = sqrt(sum(sum(abs2, x) for x in xs))
 
-function fill!(xs::FixedEffectCoefficients, α)
+function fill!(xs::FixedEffectCoefficients, α::Number)
     for x in xs
         fill!(x, α)
     end
@@ -80,7 +80,7 @@ function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::
     v = FixedEffectCoefficients(fes)
     h = FixedEffectCoefficients(fes)
     hbar = FixedEffectCoefficients(fes)
-    u = zeros(length(fes[1].refs))
+    u = zeros(length(first(fes)))
     return FixedEffectLSMR(fes, scales, caches, x, v, h, hbar, u, sqrtw)
 end
 
@@ -159,15 +159,15 @@ end
 ##############################################################################\
 
 function solve_residuals!(r::AbstractVector{Float64}, feM::FixedEffectLSMR; kwargs...)
-    r .= r .* feM.sqrtw
+    r .*= feM.sqrtw
     iterations, converged = solve!(feM, r; kwargs...)
     mul!(r, feM, feM.xs, -1.0, 1.0)
-    r .= r ./ feM.sqrtw
+    r ./=  feM.sqrtw
     return r, iterations, converged
 end
 
 function solve_coefficients!(r::AbstractVector{Float64}, feM::FixedEffectLSMR; kwargs...)
-    r .= r .* feM.sqrtw
+    r .*= feM.sqrtw
     iterations, converged = solve!(feM, r; kwargs...)
     for (x, scale) in zip(feM.xs, feM.scales)
         x .*=  scale
