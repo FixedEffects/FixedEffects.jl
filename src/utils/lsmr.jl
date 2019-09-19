@@ -1,5 +1,6 @@
 
-Adivtype(A, b) = typeof(one(eltype(b))/one(eltype(A)))
+#Adivtype(A, b) = typeof(one(eltype(b))/one(eltype(A)))
+Adivtype(A,b) = Base.promote_op(/, eltype(b), eltype(A))
 function zerox(A, b)
     T = Adivtype(A, b)
     x = zeros(T, size(A, 2))
@@ -63,7 +64,6 @@ function lsmr!(x, A, b, v, h, hbar;
     length(h) == n || error("h has length $(length(h)) but should have length $n")
     length(hbar) == n || error("hbar has length $(length(hbar)) but should have length $n")
     length(b) == m || error("b has length $(length(b)) but should have length $m")
-
 
     T = Adivtype(A, b)
     Tr = real(T)
