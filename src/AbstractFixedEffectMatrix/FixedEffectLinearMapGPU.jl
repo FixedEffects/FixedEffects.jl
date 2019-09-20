@@ -22,7 +22,7 @@ end
 
 # convert FixedEffectCoefficient between CPU and GPU
 CuArrays.CuArray(x::FixedEffectCoefficients) = FixedEffectCoefficients(CuArray.(x.x))
-Base.collect(x::FixedEffectCoefficients{<: CuVector}) = FixedEffectCoefficients(collect.(x))
+Base.collect(x::FixedEffectCoefficients{<: CuVector}) = FixedEffectCoefficients(collect.(x.x))
 
 # convert FixedEffectLSMR between CPU and GPU
 function CuArrays.CuArray(m::FixedEffectLSMR)
@@ -93,7 +93,7 @@ function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs.
 	for (x, scale) in zip(feM.xs, feM.scales)
 	   x .*=  scale
 	end 
-	x_gpu = collect(feM.xs.x)
-	fes_gpu = collect(feM.fes)
+	x_gpu = collect(feM.xs)
+	fes_gpu = collect.(feM.fes)
 	full(normalize!(x_gpu, fes_gpu; kwargs...), fes_gpu), iterations, converged
 end
