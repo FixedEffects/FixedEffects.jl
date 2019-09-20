@@ -6,6 +6,8 @@
 using .CuArrays
 using .CuArrays.CUDAnative
 
+.CuArrays.allowscalar(false)
+
 # convert FixedEffects between CPU and GPU
 function CuArrays.cu(fe::FixedEffect)
 	refs = CuArray(fe.refs)
@@ -81,7 +83,7 @@ end
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	cur = cu(r)
 	cur, iterations, converged = solve_residuals!(cur, feM.m; kwargs...)
-	copyto!(r, cur), iterations, converged
+	copyto!(r, collect(cur)), iterations, converged
 end
 
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)

@@ -70,8 +70,6 @@ struct FixedEffectLSMR{T} <: AbstractFixedEffectMatrix{T}
     sqrtw::AbstractVector{T}
 end
 
-
-
 adjoint(fem::FixedEffectLSMR) = Adjoint(fem)
 
 function size(fem::FixedEffectLSMR, dim::Integer)
@@ -126,7 +124,7 @@ end
 ##
 ##############################################################################\
 
-function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector{T}, ::Type{Val{:lsmr}}) where {T}
+function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr}})
     scales = [_scale(fe, sqrtw) for fe in fes] 
     caches = [_cache(fe, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
     xs =  FixedEffectCoefficients([zeros(fe.n) for fe in fes])
