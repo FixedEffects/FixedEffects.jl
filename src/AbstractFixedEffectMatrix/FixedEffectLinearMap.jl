@@ -7,17 +7,17 @@
 ##
 ##############################################################################
 
-struct FixedEffectCoefficients{T <: AbstractVector}
-    x::Vector{T}
+struct FixedEffectCoefficients{T} <: AbstractVector{T}
+    x::Vector{<:AbstractVector{T}}
 end
 Base.iterate(xs::FixedEffectCoefficients) = iterate(xs.x)
 Base.iterate(xs::FixedEffectCoefficients, state) = iterate(xs.x, state)
 
 function FixedEffectCoefficients(fes::Vector{<:FixedEffect})
-    FixedEffectCoefficients([zeros(eltype(fe.interaction), fe.n) for fe in fes])
+    FixedEffectCoefficients([zeros(fe.n) for fe in fes])
 end
 
-eltype(xs::FixedEffectCoefficients{T}) where {T} = eltype(T)
+eltype(xs::FixedEffectCoefficients{T}) where {T} = T
 length(xs::FixedEffectCoefficients) = sum(length(x) for x in xs)
 norm(xs::FixedEffectCoefficients) = sqrt(sum(sum(abs2, x) for x in xs))
 
@@ -61,19 +61,20 @@ end
 ##
 ##############################################################################
 
-struct FixedEffectLSMR <: AbstractFixedEffectMatrix
+struct FixedEffectLSMR{T} <: AbstractFixedEffectMatrix{T}
     fes::Vector{<:FixedEffect}
-    scales::Vector{AbstractVector}
-    caches::Vector{AbstractVector}
-    xs::FixedEffectCoefficients
-    v::FixedEffectCoefficients
-    h::FixedEffectCoefficients
-    hbar::FixedEffectCoefficients
-    u::AbstractVector
-    sqrtw::AbstractVector
+    scales::Vector{<:AbstractVector}
+    caches::Vector{<:AbstractVector}
+    xs::FixedEffectCoefficients{T}
+    v::FixedEffectCoefficients{T}
+    h::FixedEffectCoefficients{T}
+    hbar::FixedEffectCoefficients{T}
+    u::AbstractVector{T}
+    sqrtw::AbstractVector{T}
 end
 
-eltype(fem::FixedEffectLSMR) = eltype(first(fem.fes).interaction)
+
+
 adjoint(fem::FixedEffectLSMR) = Adjoint(fem)
 
 function size(fem::FixedEffectLSMR, dim::Integer)
@@ -96,7 +97,7 @@ function demean!(y::AbstractVector, fecoef::AbstractVector, refs::AbstractVector
     end
 end
 
-function mul!(fecoefs::FixedEffectCoefficients, Cfem::Adjoint{T, FixedEffectLSMR},
+function mul!(fecoefs::FixedEffectCoefficients, Cfem::Adjoint{T, FixedEffectLSMR{T}},
                 y::AbstractVector, α::Number, β::Number) where {T}
     fem = adjoint(Cfem)
     rmul!(fecoefs, β)
@@ -135,12 +136,12 @@ function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::
     v = FixedEffectCoefficients(fes)
     h = FixedEffectCoefficients(fes)
     hbar = FixedEffectCoefficients(fes)
-    u = zeros(eltype(first(fes).interaction), length(first(fes)))
+    u = zeros(length(first(fes)))
     return FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw)
 end
 
 function _scale(fe::FixedEffect, sqrtw::AbstractVector)
-    out = zeros(eltype(fe.interaction), fe.n)
+    out = zeros(fe.n)
     for i in eachindex(fe.refs)
         out[fe.refs[i]] += abs2(fe.interaction[i] * sqrtw[i])
     end
@@ -151,7 +152,7 @@ function _scale(fe::FixedEffect, sqrtw::AbstractVector)
 end
 
 function _cache(fe::FixedEffect, scale::AbstractVector, sqrtw::AbstractVector)
-    out = zeros(eltype(fe.interaction), length(fe.refs))
+    out = zeros(length(fe.refs))
     @inbounds @simd for i in eachindex(out)
         out[i] = scale[fe.refs[i]] * fe.interaction[i] * sqrtw[i]
     end

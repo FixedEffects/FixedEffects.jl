@@ -6,9 +6,9 @@
 ##
 ##############################################################################
 
-struct FixedEffectLSMRParallel{W} <: AbstractFixedEffectMatrix
+struct FixedEffectLSMRParallel{T} <: AbstractFixedEffectMatrix{T}
     fes::Vector{<:FixedEffect}
-    sqrtw::W
+    sqrtw::AbstractVector{T}
 end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, 
@@ -46,9 +46,9 @@ end
 ##
 ##############################################################################
 
-struct FixedEffectLSMRThreads{W} <: AbstractFixedEffectMatrix
+struct FixedEffectLSMRThreads{T} <: AbstractFixedEffectMatrix{T}
     fes::Vector{<:FixedEffect}
-    sqrtw::W
+    sqrtw::AbstractVector{T}
 end
 
 FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_threads}}) = FixedEffectLSMRThreads(fes, sqrtw)

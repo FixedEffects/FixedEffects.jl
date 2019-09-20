@@ -1,6 +1,7 @@
 
 # this type must defined solve_residuals!, solve_coefficients!
-abstract type AbstractFixedEffectMatrix end
+abstract type AbstractFixedEffectMatrix{T} end
+eltype(fem::AbstractFixedEffectMatrix{T}) where {T} = T
 
 """
 Solve a least square problem for a set of FixedEffects
