@@ -11,7 +11,7 @@ allowscalar(false)
 
 ##############################################################################
 ##
-## Implement special mean! and deman!
+## Implement special mean! and deman! (code by Paul Schrimpf)
 ##
 ##############################################################################
 
@@ -56,21 +56,17 @@ struct FixedEffectLSMRGPU{T} <: AbstractFixedEffectMatrix{T}
 end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
-	FixedEffectLSMRGPU(cu(FixedEffectMatrix(fes, sqrtw, Val{:lsmr})))
+	m = FixedEffectMatrix(fes, sqrtw, Val{:lsmr})
+	FixedEffectLSMRGPU(
+		FixedEffectLSMR(cu.(m.fes), cu.(m.scales), cu.(m.caches), cu(m.xs), cu(m.v), cu(m.h), cu(m.hbar), cu(m.u), CuArray(convert(Vector{Float32}, m.sqrtw))))
 end
-
-# convert FixedEffects between CPU and GPU
 function CuArrays.cu(fe::FixedEffect)
 	refs = CuArray(fe.refs)
 	interaction = CuArray(convert(Vector{Float32}, fe.interaction))
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
 end
-
 CuArrays.cu(x::FixedEffectCoefficients) = FixedEffectCoefficients(cu.(x.x))
 
-function CuArrays.cu(m::FixedEffectLSMR)
-	FixedEffectLSMR(cu.(m.fes), cu.(m.scales), cu.(m.caches), cu(m.xs), cu(m.v), cu(m.h), cu(m.hbar), cu(m.u), CuArray(convert(Vector{Float32}, m.sqrtw)))
-end
 
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
@@ -79,7 +75,6 @@ function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	copyto!(r, collect(cur)), iterations, converged
 end
 
-# does not like views
 function solve_residuals!(X::AbstractMatrix, feM::FixedEffectLSMRGPU; kwargs...)
 	iterations = zeros(Int, size(X, 2))
 	convergeds = zeros(Bool, size(X, 2))
@@ -90,6 +85,7 @@ function solve_residuals!(X::AbstractMatrix, feM::FixedEffectLSMRGPU; kwargs...)
 	end
 	return X, iterations, convergeds
 end
+
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	cur = cu(r)
 	iterations, converged = _solve_coefficients!(cur, feM.m)
@@ -97,7 +93,6 @@ function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs.
 	fes = collect.(feM.m.fes)
 	full(normalize!(xs, fes; kwargs...), fes), iterations, converged
 end
-
 function Base.collect(fe::FixedEffect{<: CuVector})
 	refs = collect(fe.refs)
 	interaction = collect(fe.interaction)
