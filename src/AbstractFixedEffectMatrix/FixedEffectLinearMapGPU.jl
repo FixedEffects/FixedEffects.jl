@@ -5,6 +5,8 @@
 ##
 ##############################################################################
 using .CuArrays
+using .CuArrays.CUDAnative
+
 # convert FixedEffects between CPU and GPU
 function CuArrays.CuArray(fe::FixedEffect)
 	refs = CuArray(fe.refs)
@@ -36,7 +38,7 @@ end
 function mean!(fecoef::CuVector, refs::CuVector, y::CuVector, α::Number, cache::CuVector)
     nthreads = 256
     nblocks = div(length(y), nthreads) + 1
-    CuArrays.CUDAnative.@cuda threads=nthreads blocks=nblocks mean_kernel!(fecoef, refs, y, α, cache)
+    @cuda threads=nthreads blocks=nblocks mean_kernel!(fecoef, refs, y, α, cache)
 end
 
 function mean_kernel!(fecoef, refs, y, α, cache)
@@ -52,17 +54,18 @@ end
 function demean!(y::CuVector, fecoef::CuVector, refs::CuVector, α::Number, cache::CuVector)
     nthreads = 256
     nblocks = div(length(y), nthreads) + 1
-    CuArrays.CUDAnative.@cuda threads=nthreads blocks=nblocks demean_kernel!(y, fecoef, refs, α, cache)
+    @cuda threads=nthreads blocks=nblocks demean_kernel!(y, fecoef, refs, α, cache)
 end
 
 function demean_kernel!(y, fecoef, refs, α, cache)
     index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     stride = blockDim().x * gridDim().x
-    @inbounds for i = index:stride:length(y)
-    	y[i] += fecoef[refs[i]] * α * cache[i]
+    for i = index:stride:length(y)
+    	@inbounds y[i] += fecoef[refs[i]] * α * cache[i]
     end
     return nothing
 end
+CUDAnative.InvalidIRError(CUDAnative.CompilerJob(FixedEffects.demean_kernel!, Tuple{CUDAnative.CuDeviceArray{Float64,1,CUDAnative.AS.Global},CUDAnative.CuDeviceArray{Float64,1,CUDAnative.AS.Global},CUDAnative.CuDeviceArray{UInt32,1,CUDAnative.AS.Global},Int64,CUDAnative.CuDeviceArray{Float64,1,CUDAnative.AS.Global}}, v"3.7.0", true, nothing, nothing, nothing, nothing), Tuple{String,Array{Base.StackTraces.StackFrame,1},Any}[("call to the Julia runtime", [demean_kernel! at FixedEffectLinearMapGPU.jl:61], "jl_f_getfield"), ("dynamic function invocation", [demean_kernel! at FixedEffectLinearMapGPU.jl:62], iterate), ("dynamic function invocation", [* at operators.jl:502, demean_kernel! at FixedEffectLinearMapGPU.jl:62], iterate), ("use of an undefined name", [demean_kernel! at FixedEffectLinearMapGPU.jl:59], :blockIdx), ("dynamic function invocation", [demean_kernel! at FixedEffectLinearMapGPU.jl:59], iterate), ("use of an undefined name", [demean_kernel! at FixedEffectLinearMapGPU.jl:59], :blockDim), ("use of an undefined name", [demean_kernel! at FixedEffectLinearMapGPU.jl:59], :threadIdx), ("use of an undefined name", [demean_kernel! at FixedEffectLinearMapGPU.jl:60], :blockDim), ("dynamic function invocation", [demean_kernel! at FixedEffectLinearMapGPU.jl:60], iterate), ("use of an undefined name", [demean_kernel! at FixedEffectLinearMapGPU.jl:60], :gridDim), ("dynamic function invocation", [demean_kernel! at FixedEffectLinearMapGPU.jl:61], iterate)])
 
 ##############################################################################
 ##
