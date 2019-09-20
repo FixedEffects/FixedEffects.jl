@@ -13,9 +13,6 @@ end
 Base.iterate(xs::FixedEffectCoefficients) = iterate(xs.x)
 Base.iterate(xs::FixedEffectCoefficients, state) = iterate(xs.x, state)
 
-function FixedEffectCoefficients(fes::Vector{<:FixedEffect})
-    FixedEffectCoefficients([zeros(fe.n) for fe in fes])
-end
 
 eltype(xs::FixedEffectCoefficients{T}) where {T} = T
 length(xs::FixedEffectCoefficients) = sum(length(x) for x in xs)
@@ -129,19 +126,19 @@ end
 ##
 ##############################################################################\
 
-function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr}})
+function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector{T}, ::Type{Val{:lsmr}}) where {T}
     scales = [_scale(fe, sqrtw) for fe in fes] 
     caches = [_cache(fe, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
-    xs = FixedEffectCoefficients(fes)
-    v = FixedEffectCoefficients(fes)
-    h = FixedEffectCoefficients(fes)
-    hbar = FixedEffectCoefficients(fes)
-    u = zeros(length(first(fes)))
+    xs =  FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
+    v =  FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
+    h =  FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
+    hbar =  FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
+    u = zeros(T, length(first(fes)))
     return FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw)
 end
 
 function _scale(fe::FixedEffect, sqrtw::AbstractVector)
-    out = zeros(fe.n)
+    out = zeros(eltype(sqrtw), fe.n)
     for i in eachindex(fe.refs)
         out[fe.refs[i]] += abs2(fe.interaction[i] * sqrtw[i])
     end
@@ -152,7 +149,7 @@ function _scale(fe::FixedEffect, sqrtw::AbstractVector)
 end
 
 function _cache(fe::FixedEffect, scale::AbstractVector, sqrtw::AbstractVector)
-    out = zeros(length(fe.refs))
+    out = zeros(eltype(sqrtw), length(fe.refs))
     @inbounds @simd for i in eachindex(out)
         out[i] = scale[fe.refs[i]] * fe.interaction[i] * sqrtw[i]
     end
