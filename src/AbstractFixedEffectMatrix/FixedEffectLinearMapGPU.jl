@@ -1,7 +1,6 @@
 using .CuArrays
 using .CuArrays.CUDAnative
 
-.CuArrays.allowscalar(false)
 
 ##############################################################################
 ##
