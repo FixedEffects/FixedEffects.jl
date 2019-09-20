@@ -168,10 +168,15 @@ function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
 end
 
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
-    r .*= feM.sqrtw
-    iterations, converged = solve!(feM, r; kwargs...)
-    for (x, scale) in zip(feM.xs, feM.scales)
-        x .*=  scale
-    end 
+	iterations, converged = _solve_coefficients!(r, feM)
     full(normalize!(feM.xs.x, feM.fes; kwargs...), feM.fes), iterations, converged
+end
+
+function _solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
+	r .*= feM.sqrtw
+	iterations, converged = solve!(feM, r; kwargs...)
+	for (x, scale) in zip(feM.xs, feM.scales)
+	    x .*=  scale
+	end
+	iterations, converged
 end

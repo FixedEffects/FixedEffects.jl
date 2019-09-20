@@ -99,14 +99,10 @@ end
 
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	cur = cu(r)
-	feM = feM.m
-	cur .*= feM.sqrtw
-	iterations, converged = solve!(feM, r; kwargs...)
-	for (x, scale) in zip(feM.xs, feM.scales)
-	   x .*=  scale
-	end 
-	fes_gpu = collect.(feM.fes)
-	full(normalize!(collect.(feM.xs.x), fes_gpu; kwargs...), fes_gpu), iterations, converged
+	iterations, converged = _solve_coefficients!(r, feM.m)
+	xs = collect.(feM.m.xs.x)
+	fes = collect.(feM.m.fes)
+	full(normalize!(xs, fes; kwargs...), fes), iterations, converged
 end
 
 function Base.collect(fe::FixedEffect{<: CuVector})
