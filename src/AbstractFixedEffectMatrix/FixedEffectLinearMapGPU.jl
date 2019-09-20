@@ -95,9 +95,9 @@ end
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	copyto!(feM.tmp, r)
-	copyto!(feM.u, feM.tmp)
-	_, iterations, converged = solve_residuals!(feM.u, feM.m; kwargs...)
-	copyto!(feM.tmp, feM.u)
+	copyto!(feM.m.u, feM.tmp)
+	_, iterations, converged = solve_residuals!(feM.m.u, feM.m; kwargs...)
+	copyto!(feM.tmp, feM.m.u)
 	copyto!(r, feM.tmp), iterations, converged
 end
 
