@@ -103,8 +103,8 @@ end
 
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	copyto!(feM.tmp, r)
-	copyto!(feM.tmp2, feM.tmp)
-	iterations, converged = _solve_coefficients!(feM.tmp2, feM.m)
+	copyto!(feM.m.u, feM.tmp)
+	iterations, converged = _solve_coefficients!(feM.m.u, feM.m)
 	xs = collect.(feM.m.xs.x)
 	fes = collect.(feM.m.fes)
 	full(normalize!(xs, fes; kwargs...), fes), iterations, converged
