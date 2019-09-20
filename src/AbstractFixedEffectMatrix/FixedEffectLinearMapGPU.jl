@@ -95,5 +95,5 @@ function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs.
 	end 
 	x_gpu = collect(feM.xs)
 	fes_gpu = collect.(feM.fes)
-	full(normalize!(x_gpu, fes_gpu; kwargs...), fes_gpu), iterations, converged
+	full(normalize!(x_gpu.x, fes_gpu; kwargs...), fes_gpu), iterations, converged
 end
