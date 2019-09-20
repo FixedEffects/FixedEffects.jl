@@ -79,13 +79,13 @@ function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::
 	FixedEffectLSMRGPU(CuArray(FixedEffectMatrix(fes, sqrtw, Val{:lsmr})))
 end
 
-function solve_residuals!(r::AbstractVector{Float64}, feM::FixedEffectLSMRGPU; kwargs...)
+function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	cur = CuArray(r)
 	cur, iterations, converged = solve_residuals!(cur, feM.m; kwargs...)
 	copy!(r, cur), iterations, converged
 end
 
-function solve_coefficients!(r::AbstractVector{Float64}, feM::FixedEffectLSMRGPU; kwargs...)
+function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	cur = CuArray(r)
 	cur .*= feM.sqrtw
 	iterations, converged = solve!(feM, r; kwargs...)
