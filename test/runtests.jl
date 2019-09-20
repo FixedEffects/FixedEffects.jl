@@ -1,7 +1,6 @@
 using FixedEffects
 
-tests = ["solve_residuals.jl",
-		 "solve_coefficients.jl",
+tests = ["solve.jl",
 		 "utils.jl"
 		 ]
 

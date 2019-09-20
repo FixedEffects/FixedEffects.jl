@@ -32,7 +32,7 @@ end
 ##
 ##############################################################################
 
-struct FixedEffectCholesky{T, V, N, Tw} <: AbstractFixedEffectMatrix
+struct FixedEffectCholesky{T, V, N, Tw} <: AbstractFixedEffectMatrix{V}
     fes::Vector{<:FixedEffect}
     m::SparseMatrixCSC{V, N}
     cholm::T
@@ -57,7 +57,7 @@ end
 ##
 ##############################################################################
 
-struct FixedEffectQR{T, V, N, Tw} <: AbstractFixedEffectMatrix
+struct FixedEffectQR{T, V, N, Tw} <: AbstractFixedEffectMatrix{V}
     fes::Vector{<:FixedEffect}
     m::SparseMatrixCSC{V, N}
     qrm::T
