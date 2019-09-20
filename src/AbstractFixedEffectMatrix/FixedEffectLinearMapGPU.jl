@@ -59,9 +59,10 @@ end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
 	m = FixedEffectMatrix(fes, sqrtw, Val{:lsmr})
+	nobs = length(first(m.caches))
 	FixedEffectLSMRGPU(
 		FixedEffectLSMR(cu.(m.fes), cu.(m.scales), cu.(m.caches), cu(m.xs), cu(m.v), cu(m.h), cu(m.hbar), cu(m.u), CuVector{Float32}(m.sqrtw)),
-		zeros(Float32, length(first(m.caches))))
+		Vector{Float32}(undef, nobs), CuVector{Float32}(undef, nobs))
 end
 function CuArrays.cu(fe::FixedEffect)
 	refs = CuArray(fe.refs)
