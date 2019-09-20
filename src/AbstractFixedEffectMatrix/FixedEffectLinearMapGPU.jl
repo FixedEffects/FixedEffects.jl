@@ -87,6 +87,7 @@ end
 
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	cur = CuArray(r)
+	feM = feM.m
 	cur .*= feM.sqrtw
 	iterations, converged = solve!(feM, r; kwargs...)
 	for (x, scale) in zip(feM.xs, feM.scales)
