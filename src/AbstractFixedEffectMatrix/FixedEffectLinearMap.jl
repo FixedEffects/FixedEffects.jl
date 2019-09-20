@@ -129,11 +129,11 @@ end
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector{T}, ::Type{Val{:lsmr}}) where {T}
     scales = [_scale(fe, sqrtw) for fe in fes] 
     caches = [_cache(fe, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
-    xs =  FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
-    v =  FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
-    h =  FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
-    hbar =  FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
-    u = zeros(T, length(first(fes)))
+    xs =  FixedEffectCoefficients([zeros(fe.n) for fe in fes])
+    v =  FixedEffectCoefficients([zeros(fe.n) for fe in fes])
+    h =  FixedEffectCoefficients([zeros(fe.n) for fe in fes])
+    hbar =  FixedEffectCoefficients([zeros(fe.n) for fe in fes])
+    u = zeros(length(first(fes)))
     return FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw)
 end
 

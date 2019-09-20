@@ -7,7 +7,7 @@ using .CuArrays
 using .CuArrays.CUDAnative
 
 # convert FixedEffects between CPU and GPU
-function CuArrays.CuArray(fe::FixedEffect)
+function CuArrays.cu(fe::FixedEffect)
 	refs = CuArray(fe.refs)
 	interaction = CuArray(convert(Vector{Float32}, fe.interaction))
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
@@ -20,12 +20,12 @@ function Base.collect(fe::FixedEffect{<: CuVector})
 end
 
 # convert FixedEffectCoefficient between CPU and GPU
-CuArrays.CuArray(x::FixedEffectCoefficients) = FixedEffectCoefficients(CuArray.(x.x))
+CuArrays.cu(x::FixedEffectCoefficients) = FixedEffectCoefficients(cu.(x.x))
 Base.collect(x::FixedEffectCoefficients{<: CuVector}) = FixedEffectCoefficients(collect.(x.x))
 
 # convert FixedEffectLSMR between CPU and GPU
-function CuArrays.CuArray(m::FixedEffectLSMR)
-	FixedEffectLSMR(CuArray.(m.fes), CuArray.(m.scales), CuArray.(m.caches), CuArray(m.xs), CuArray(m.v), CuArray(m.h), CuArray(m.hbar), CuArray(m.u), CuArray(m.sqrtw))
+function CuArrays.cu(m::FixedEffectLSMR)
+	FixedEffectLSMR(cu.(m.fes), cu.(m.scales), cu.(m.caches), cu(m.xs), cu(m.v), cu(m.h), cu(m.hbar), cu(m.u), CuArray(convert(Vector{Float32}, m.sqrtw)))
 end
 
 ##############################################################################
@@ -75,8 +75,7 @@ struct FixedEffectLSMRGPU{T} <: AbstractFixedEffectMatrix{T}
 end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
-	sqrtw = convert(Vector{Float32}, sqrtw)
-	FixedEffectLSMRGPU(FixedEffectMatrix(fes, sqrtw, ::Type{Val{:lsmr_gpu}}))
+	FixedEffectLSMRGPU(cu(FixedEffectMatrix(fes, sqrtw, Val{:lsmr})))
 end
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
