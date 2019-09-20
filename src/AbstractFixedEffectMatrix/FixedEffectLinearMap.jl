@@ -7,8 +7,8 @@
 ##
 ##############################################################################
 
-struct FixedEffectCoefficients{T}
-    x::Vector{Vector{T}}
+struct FixedEffectCoefficients{T <: AbstractVector}
+    x::Vector{T}
 end
 Base.iterate(xs::FixedEffectCoefficients) = iterate(xs.x)
 Base.iterate(xs::FixedEffectCoefficients, state) = iterate(xs.x, state)
@@ -17,7 +17,7 @@ function FixedEffectCoefficients(fes::Vector{<:FixedEffect})
     FixedEffectCoefficients([zeros(fe.n) for fe in fes])
 end
 
-eltype(xs::FixedEffectCoefficients{T}) where {T} = T
+eltype(xs::FixedEffectCoefficients{T}) where {T} = eltype(T)
 length(xs::FixedEffectCoefficients) = sum(length(x) for x in xs)
 norm(xs::FixedEffectCoefficients) = sqrt(sum(sum(abs2, x) for x in xs))
 
@@ -63,44 +63,14 @@ end
 
 struct FixedEffectLSMR <: AbstractFixedEffectMatrix
     fes::Vector{<:FixedEffect}
-    scales::Vector{Vector{Float64}}
-    caches::Vector{Vector{Float64}}
-    xs::FixedEffectCoefficients{Float64}
-    v::FixedEffectCoefficients{Float64}
-    h::FixedEffectCoefficients{Float64}
-    hbar::FixedEffectCoefficients{Float64}
-    u::Vector{Float64}
-    sqrtw::AbstractVector{Float64}
-end
-
-function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr}})
-    scales = [_scale(fe, sqrtw) for fe in fes] 
-    caches = [_cache(fe, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
-    x = FixedEffectCoefficients(fes)
-    v = FixedEffectCoefficients(fes)
-    h = FixedEffectCoefficients(fes)
-    hbar = FixedEffectCoefficients(fes)
-    u = zeros(length(first(fes)))
-    return FixedEffectLSMR(fes, scales, caches, x, v, h, hbar, u, sqrtw)
-end
-
-function _scale(x::FixedEffect, sqrtw)
-    out = zeros(x.n)
-    for i in eachindex(x.refs)
-        out[x.refs[i]] += abs2(x.interaction[i] * sqrtw[i])
-    end
-    for i in eachindex(out)
-        out[i] = out[i] > 0.0 ? (1.0 / sqrt(out[i])) : 0.0
-    end
-    return out
-end
-
-function _cache(fe::FixedEffect, scale, sqrtw::AbstractVector)
-    out = zeros(length(fe.refs))
-    @inbounds @simd for i in eachindex(out)
-        out[i] = scale[fe.refs[i]] * fe.interaction[i] * sqrtw[i]
-    end
-    return out
+    scales::Vector{AbstractVector}
+    caches::Vector{AbstractVector}
+    xs::FixedEffectCoefficients
+    v::FixedEffectCoefficients
+    h::FixedEffectCoefficients
+    hbar::FixedEffectCoefficients
+    u::AbstractVector
+    sqrtw::AbstractVector
 end
 
 eltype(fem::FixedEffectLSMR) = Float64
@@ -158,7 +128,37 @@ end
 ##
 ##############################################################################\
 
-function solve_residuals!(r::AbstractVector{Float64}, feM::FixedEffectLSMR; kwargs...)
+function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr}})
+    scales = [_scale(fe, sqrtw) for fe in fes] 
+    caches = [_cache(fe, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
+    xs = FixedEffectCoefficients(fes)
+    v = FixedEffectCoefficients(fes)
+    h = FixedEffectCoefficients(fes)
+    hbar = FixedEffectCoefficients(fes)
+    u = zeros(length(first(fes)))
+    return FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw)
+end
+
+function _scale(fe::FixedEffect, sqrtw::AbstractVector)
+    out = zeros(fe.n)
+    for i in eachindex(fe.refs)
+        out[fe.refs[i]] += abs2(fe.interaction[i] * sqrtw[i])
+    end
+    for i in eachindex(out)
+        out[i] = out[i] > 0.0 ? (1.0 / sqrt(out[i])) : 0.0
+    end
+    return out
+end
+
+function _cache(fe::FixedEffect, scale::AbstractVector, sqrtw::AbstractVector)
+    out = zeros(length(fe.refs))
+    @inbounds @simd for i in eachindex(out)
+        out[i] = scale[fe.refs[i]] * fe.interaction[i] * sqrtw[i]
+    end
+    return out
+end
+
+function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
     r .*= feM.sqrtw
     iterations, converged = solve!(feM, r; kwargs...)
     mul!(r, feM, feM.xs, -1.0, 1.0)
@@ -166,7 +166,7 @@ function solve_residuals!(r::AbstractVector{Float64}, feM::FixedEffectLSMR; kwar
     return r, iterations, converged
 end
 
-function solve_coefficients!(r::AbstractVector{Float64}, feM::FixedEffectLSMR; kwargs...)
+function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
     r .*= feM.sqrtw
     iterations, converged = solve!(feM, r; kwargs...)
     for (x, scale) in zip(feM.xs, feM.scales)
@@ -174,76 +174,3 @@ function solve_coefficients!(r::AbstractVector{Float64}, feM::FixedEffectLSMR; k
     end 
     full(normalize!(feM.xs.x, feM.fes; kwargs...), feM.fes), iterations, converged
 end
-
-##############################################################################
-##
-## LSMR Parallel
-##
-## One needs to construct a new fe matrix / fe vectirs for each LHS/RHS
-##
-##############################################################################
-
-struct FixedEffectLSMRParallel{W} <: AbstractFixedEffectMatrix
-    fes::Vector{<:FixedEffect}
-    sqrtw::W
-end
-
-function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, 
-                ::Type{Val{:lsmr_parallel}})
-    FixedEffectLSMRParallel(fes, sqrtw)
-end
-
-function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRParallel; kwargs...)
-    solve_residuals!(r, FixedEffectMatrix(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
-end
-
-function solve_residuals!(X::AbstractMatrix, feM::FixedEffectLSMRParallel; kwargs...)
-    iterations = zeros(Int, size(X, 2))
-    convergeds = zeros(Bool, size(X, 2))
-    result = pmap(x -> solve_residuals!(x, feM; kwargs...), [X[:, j] for j in 1:size(X, 2)])
-    for j in 1:size(X, 2)
-        X[:, j] = result[j][1]
-        iterations[j] =  result[j][2]
-        convergeds[j] = result[j][3]
-    end
-    return X, iterations, convergeds
-end
-
-function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRParallel, ; kwargs...)
-    solve_coefficients!(r, FixedEffectMatrix(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
-end
-
-##############################################################################
-##
-## LSMR MultiThreaded
-##
-## One needs to construct a new fe matrix / fe vectirs for each LHS/RHS
-##
-##############################################################################
-
-struct FixedEffectLSMRThreads{W} <: AbstractFixedEffectMatrix
-    fes::Vector{<:FixedEffect}
-    sqrtw::W
-end
-
-FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_threads}}) = FixedEffectLSMRThreads(fes, sqrtw)
-
-function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRThreads; kwargs...)
-    solve_residuals!(r, FixedEffectMatrix(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
-end
-
-function solve_residuals!(X::AbstractMatrix, feM::FixedEffectLSMRThreads; kwargs...)
-   iterations = zeros(Int, size(X, 2))
-   convergeds = zeros(Bool, size(X, 2))
-   Threads.@threads for j in 1:size(X, 2)
-        X[:, j], iteration, converged = solve_residuals!(X[:, j], feM; kwargs...)
-        iterations[j] = iteration
-        convergeds[j] = converged
-   end
-   return X, iterations, convergeds
-end
-
-function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRThreads; kwargs...)
-    solve_coefficients!(r, FixedEffectMatrix(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
-end
-
