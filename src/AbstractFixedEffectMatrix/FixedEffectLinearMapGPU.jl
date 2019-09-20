@@ -62,7 +62,7 @@ function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::
 end
 function CuArrays.cu(fe::FixedEffect)
 	refs = CuArray(fe.refs)
-	interaction = CuVector{Float32})(fe.interaction)
+	interaction = CuVector{Float32}(fe.interaction)
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
 end
 CuArrays.cu(x::FixedEffectCoefficients) = FixedEffectCoefficients(cu.(x.x))
