@@ -46,15 +46,6 @@ function demean_kernel!(y, fecoef, refs, α, cache)
     return nothing
 end
 
-
-##############################################################################
-##
-## Implement AbstractRixedEffectMatrix Interface
-##
-##############################################################################
-
-
-
 ##############################################################################
 ##
 ## Implement AbstractRixedEffectMatrix Interface
@@ -88,7 +79,7 @@ end
 
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	cur = cu(r)
-	iterations, converged = _solve_coefficients!(r, feM.m)
+	iterations, converged = _solve_coefficients!(cur, feM.m)
 	xs = collect.(feM.m.xs.x)
 	fes = collect.(feM.m.fes)
 	full(normalize!(xs, fes; kwargs...), fes), iterations, converged
