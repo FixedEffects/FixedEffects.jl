@@ -19,8 +19,8 @@ function Base.collect(fe::FixedEffect{<: CuVector})
 end
 
 # convert FixedEffectCoefficient between CPU and GPU
-CuArrays.CuArray(x::FixedEffectCoefficients) = FixedEffectCoefficient(CuArray.(x.x))
-Base.collect(x::FixedEffectCoefficients{<: CuVector}) = FixedEffectCoefficient(collect.(x))
+CuArrays.CuArray(x::FixedEffectCoefficients) = FixedEffectCoefficients(CuArray.(x.x))
+Base.collect(x::FixedEffectCoefficients{<: CuVector}) = FixedEffectCoefficients(collect.(x))
 
 # convert FixedEffectLSMR between CPU and GPU
 function CuArrays.CuArray(m::FixedEffectLSMR)
