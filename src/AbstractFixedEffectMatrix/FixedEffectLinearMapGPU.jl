@@ -68,7 +68,6 @@ end
 CuArrays.cu(x::FixedEffectCoefficients) = FixedEffectCoefficients(cu.(x.x))
 
 
-
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	cur = cu(r)
 	cur, iterations, converged = solve_residuals!(cur, feM.m; kwargs...)
