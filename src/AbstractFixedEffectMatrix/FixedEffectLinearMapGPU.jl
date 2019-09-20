@@ -24,7 +24,7 @@ CuArrays.CuArray(x::FixedEffectCoefficients) = FixedEffectCoefficient(CuArray.(x
 Base.collect(x::FixedEffectCoefficients{<: CuVector}) = FixedEffectCoefficient(collect.(x))
 
 # convert FixedEffectLSMR between CPU and GPU
-function CuArrays.Cuarray(m::FixedEffectLSMR)
+function CuArrays.CuArray(m::FixedEffectLSMR)
 	FixedEffectLSMR(CuArray(m.fes), CuArray.(m.scales), CuArray.(m.caches), CuArray(m.xs), CuArray(m.v), CuArray(m.h), CuArray(m.hbar), CuArray(m.u), CuArray(m.sqrtw))
 end
 
