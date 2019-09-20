@@ -11,6 +11,7 @@ function CuArrays.CuArray(x::FixedEffect)
 	refs = CuArray(fe.refs)
 	interaction = CuArray(fe.interaction)
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
+end
 
 function Base.collect(fe::FixedEffect{<: CuVector})
 	refs = collect(fe.refs)
