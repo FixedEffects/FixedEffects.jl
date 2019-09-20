@@ -71,14 +71,14 @@ end
 struct FixedEffectLSMRGPU{T} <: AbstractFixedEffectMatrix{T}
 	m::FixedEffectLSMR{T}
 	tmp::Vector{T} 	# used to convert views, Float64 to Vector{Float32}
-	tmp2::CuVector{T} # used to convert Vector{Float32} to CuVector{Float32}
 end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
-	scales = [cu(_scale!(Vector{Float32}(undef, fe.n), fe, sqrtw)) for fe in fes]
+	scales = [_scale!(Vector{Float32}(undef, fe.n), fe, sqrtw) for fe in fes]
 	n = length(sqrtw)
 	tmp = Vector{Float32}(undef, n)
 	caches = [CuVector{Float32}(_cache!(tmp, fe, scale, sqrtw)) for (fe, scale) in zip(fes, scales)]
+	scales = cu.(scales)
 	fes = cu.(fes)
 	sqrtw = CuVector{Float32}(sqrtw)
 	xs = FixedEffectCoefficients([CuVector{Float32}(undef, fe.n) for fe in fes])
@@ -89,17 +89,15 @@ function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::
 	fill!(h, 0.0)
 	fill!(hbar, 0.0)
 	u = CuVector{Float32}(undef, n)
-	tmp = Vector{Float32}(undef, n)
-	FixedEffectLSMRGPU(FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw), tmp, tmp2)
+	FixedEffectLSMRGPU(FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw), tmp)
 end
 
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	copyto!(feM.tmp, r)
-	# CPU to GPU
-	copyto!(feM.tmp2, feM.tmp)
-	_, iterations, converged = solve_residuals!(feM.tmp2, feM.m; kwargs...)
-	copyto!(feM.tmp, feM.tmp2)
+	copyto!(feM.u, feM.tmp)
+	_, iterations, converged = solve_residuals!(feM.u, feM.m; kwargs...)
+	copyto!(feM.tmp, feM.u)
 	copyto!(r, feM.tmp), iterations, converged
 end
 
