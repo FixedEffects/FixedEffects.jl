@@ -75,10 +75,10 @@ struct FixedEffectLSMRGPU{T} <: AbstractFixedEffectMatrix{T}
 end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
-	scales = [cu(_scale(Vector{Float32}(undef, fe.n)), fe, sqrtw) for fe in fes]
+	scales = [cu(_scale!(Vector{Float32}(undef, fe.n)), fe, sqrtw) for fe in fes]
 	n = length(sqrtw)
-	cache = Vector{Float32}(n)
-	caches = [CuVector{Float32}(_cache!(cache, fe, scale, sqrtw)) for (fe, scale) in zip(fes, scales)]
+	tmp = Vector{Float32}(n)
+	caches = [CuVector{Float32}(_cache!(tmp, fe, scale, sqrtw)) for (fe, scale) in zip(fes, scales)]
 	fes = cu.(fes)
 	sqrtw = CuVector{Float32}(sqrtw)
 	xs = FixedEffectCoefficients([CuVector{Float32}(undef, fe.n) for fe in fes])
@@ -90,7 +90,6 @@ function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::
 	fill!(hbar, 0.0)
 	u = CuVector{Float32}(undef, n)
 	tmp = Vector{Float32}(undef, n)
-	tmp2 = CuVector{Float32}(undef, n)
 	FixedEffectLSMRGPU(FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw), tmp, tmp2)
 end
 
