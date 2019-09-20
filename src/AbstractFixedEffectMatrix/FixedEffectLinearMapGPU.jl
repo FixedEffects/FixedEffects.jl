@@ -4,7 +4,7 @@
 ## LSMR GPU
 ##
 ##############################################################################
-using .CuArrays
+using .CuArrays, .CUDAnative
 
 # convert FixedEffects between CPU and GPU
 function CuArrays.CuArray(x::FixedEffect)
