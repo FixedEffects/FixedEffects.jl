@@ -6,7 +6,7 @@
 ##############################################################################
 using .CuArrays
 # convert FixedEffects between CPU and GPU
-function CuArrays.CuArray(x::FixedEffect)
+function CuArrays.CuArray(fe::FixedEffect)
 	refs = CuArray(fe.refs)
 	interaction = CuArray(fe.interaction)
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
