@@ -58,11 +58,11 @@ end
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
 	m = FixedEffectMatrix(fes, sqrtw, Val{:lsmr})
 	FixedEffectLSMRGPU(
-		FixedEffectLSMR(cu.(m.fes), cu.(m.scales), cu.(m.caches), cu(m.xs), cu(m.v), cu(m.h), cu(m.hbar), cu(m.u), CuArray(convert(Vector{Float32}, m.sqrtw))))
+		FixedEffectLSMR(cu.(m.fes), cu.(m.scales), cu.(m.caches), cu(m.xs), cu(m.v), cu(m.h), cu(m.hbar), cu(m.u), CuVector{Float32}(m.sqrtw)))
 end
 function CuArrays.cu(fe::FixedEffect)
 	refs = CuArray(fe.refs)
-	interaction = CuArray(convert(Vector{Float32}, fe.interaction))
+	interaction = CuVector{Float32})(fe.interaction)
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
 end
 CuArrays.cu(x::FixedEffectCoefficients) = FixedEffectCoefficients(cu.(x.x))
@@ -71,14 +71,14 @@ CuArrays.cu(x::FixedEffectCoefficients) = FixedEffectCoefficients(cu.(x.x))
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	cur = cu(r)
 	cur, iterations, converged = solve_residuals!(cur, feM.m; kwargs...)
-	copyto!(r, collect(cur)), iterations, converged
+	copyto!(r, cur), iterations, converged
 end
 
 function solve_residuals!(X::AbstractMatrix, feM::FixedEffectLSMRGPU; kwargs...)
 	iterations = zeros(Int, size(X, 2))
 	convergeds = zeros(Bool, size(X, 2))
 	for j in 1:size(X, 2)
-	     X[:, j], iteration, converged = solve_residuals!(X[:, j], feM; kwargs...)
+	     _, iteration, converged = solve_residuals!(X[:, j], feM; kwargs...)
 	     iterations[j] = iteration
 	     convergeds[j] = converged
 	end
