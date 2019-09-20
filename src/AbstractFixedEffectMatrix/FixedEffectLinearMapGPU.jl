@@ -77,7 +77,7 @@ end
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
 	scales = [cu(_scale!(Vector{Float32}(undef, fe.n), fe, sqrtw)) for fe in fes]
 	n = length(sqrtw)
-	tmp = Vector{Float32}(n)
+	tmp = Vector{Float32}(undef, n)
 	caches = [CuVector{Float32}(_cache!(tmp, fe, scale, sqrtw)) for (fe, scale) in zip(fes, scales)]
 	fes = cu.(fes)
 	sqrtw = CuVector{Float32}(sqrtw)
