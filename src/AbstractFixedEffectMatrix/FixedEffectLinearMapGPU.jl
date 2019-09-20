@@ -52,7 +52,7 @@ end
 function demean!(y::CuVector, fecoef::CuVector, refs::CuVector, α::Number, cache::CuVector)
     nthreads = 256
     nblocks = div(length(y), nthreads) + 1
-    @cuda threads = nthreads blocks = nblocks demean_kernel!(y, fecoef, refs, α, cache)
+    CuArrays.CUDAnative.@cuda threads = nthreads blocks = nblocks demean_kernel!(y, fecoef, refs, α, cache)
 end
 
 function demean_kernel!(y, fecoef, refs, α, cache)
