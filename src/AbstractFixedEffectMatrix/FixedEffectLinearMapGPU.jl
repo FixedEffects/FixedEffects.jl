@@ -49,7 +49,7 @@ end
 
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
-	fes = CuArray.(fes)
+	fes = cu.(fes)
 	sqrtw = cu(sqrtw)
 	scales = [CuArrays_scale(fe, sqrtw) for fe in fes] 
 	caches = [CuArrays_cache(fe, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
@@ -62,7 +62,7 @@ function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::
 end
 
 # convert FixedEffects between CPU and GPU
-function CuArrays.CuArray(fe::FixedEffect)
+function CuArrays.cu(fe::FixedEffect)
 	refs = CuArray(fe.refs)
 	interaction = cu(fe.interaction)
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
