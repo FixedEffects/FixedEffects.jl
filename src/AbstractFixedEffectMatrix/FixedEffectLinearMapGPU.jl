@@ -54,7 +54,7 @@ end
 struct FixedEffectLSMRGPU{T} <: AbstractFixedEffectMatrix{T}
 	m::FixedEffectLSMR{T}
 	tmp::Vector{T}
-	tmp2::CVector{T}
+	tmp2::CuVector{T}
 end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
@@ -76,7 +76,7 @@ function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	copyto!(feM.tmp, r)
 	# CPU to GPU
 	copyto!(feM.tmp2, feM.tmp)
-	cur, iterations, converged = solve_residuals!(feM.tmp2, feM.m; kwargs...)
+	_, iterations, converged = solve_residuals!(feM.tmp2, feM.m; kwargs...)
 	copyto!(feM.tmp, feM.tmp2)
 	copyto!(r, feM.tmp), iterations, converged
 end
