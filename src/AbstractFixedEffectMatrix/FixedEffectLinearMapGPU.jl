@@ -36,13 +36,13 @@ end
 function mean!(fecoef::CuVector, refs::CuVector, y::CuVector, α::Number, cache::CuVector)
     nthreads = 256
     nblocks = div(length(y), nthreads) + 1
-    CuArrays.CUDAnative.@cuda threads = nthreads blocks = nblocks mean_kernel!(fecoef, refs, y, α, cache)
+    CuArrays.CUDAnative.@cuda threads=nthreads blocks=nblocks mean_kernel!(fecoef, refs, y, α, cache)
 end
 
 function mean_kernel!(fecoef, refs, y, α, cache)
     index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     stride = blockDim().x * gridDim().x
-    @inbounds for i in index:stride:length(y)
+    @inbounds for i = index:stride:length(y)
         r = refs[i]
         CuArrays.CUDAnative.atomic_add!(pointer(fecoef, r), y[i] * α * cache[i])
     end
@@ -52,13 +52,13 @@ end
 function demean!(y::CuVector, fecoef::CuVector, refs::CuVector, α::Number, cache::CuVector)
     nthreads = 256
     nblocks = div(length(y), nthreads) + 1
-    CuArrays.CUDAnative.@cuda threads = nthreads blocks = nblocks demean_kernel!(y, fecoef, refs, α, cache)
+    CuArrays.CUDAnative.@cuda threads=nthreads blocks=nblocks demean_kernel!(y, fecoef, refs, α, cache)
 end
 
 function demean_kernel!(y, fecoef, refs, α, cache)
     index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     stride = blockDim().x * gridDim().x
-    @inbounds for i in index:stride:length(y)
+    @inbounds for i = index:stride:length(y)
     	y[i] += fecoef[refs[i]] * α * cache[i]
     end
     return nothing
