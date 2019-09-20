@@ -1,6 +1,7 @@
 
 # this type must defined solve_residuals!, solve_coefficients!
-abstract type AbstractFixedEffectMatrix end
+abstract type AbstractFixedEffectMatrix{T} end
+eltype(fem::AbstractFixedEffectMatrix{T}) where {T} = T
 
 """
 Solve a least square problem for a set of FixedEffects
@@ -11,7 +12,7 @@ Solve a least square problem for a set of FixedEffects
 * `y` : A `AbstractVector` or an `AbstractMatrix`
 * `fes`: A `Vector{<:FixedEffect}`
 * `weights`: A `AbstractWeights`
-* `method` : A `Symbol` for the method. Choices are :lsmr, :lsmr_threads, :lsmr_parallel, :qr and :cholesky
+* `method` : A `Symbol` for the method. Choices are :lsmr, :lsmr_threads, :lsmr_parallel, :lsmr_gpu (available only if `CuArrays` is loaded), :qr and :cholesky.
 * `maxiter` : Maximum number of iterations
 * `tol` : Tolerance
 

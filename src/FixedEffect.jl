@@ -38,7 +38,7 @@ end
 
 Base.ismissing(fe::FixedEffect) = any(fe.refs .== 0)  | ismissing(fe.interaction)
 Base.length(fe::FixedEffect) = length(fe.refs)
-
+Base.eltype(fe::FixedEffect) = eltype(I)
 ##############################################################################
 ##
 ## group transform multiple CategoricalVector into one
