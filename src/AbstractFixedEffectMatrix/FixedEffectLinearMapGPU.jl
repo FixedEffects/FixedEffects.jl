@@ -93,7 +93,7 @@ function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs.
 	for (x, scale) in zip(feM.xs, feM.scales)
 	   x .*=  scale
 	end 
-	x = collect(feM.xs.x)
-	fes = collect(feM.fes)
-	full(normalize!(x, fes; kwargs...), fes), iterations, converged
+	x_gpu = collect(feM.xs.x)
+	fes_gpu = collect(feM.fes)
+	full(normalize!(x_gpu, fes_gpu; kwargs...), fes_gpu), iterations, converged
 end
