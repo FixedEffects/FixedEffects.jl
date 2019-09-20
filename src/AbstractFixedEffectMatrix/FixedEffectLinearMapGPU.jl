@@ -58,18 +58,28 @@ struct FixedEffectLSMRGPU{T} <: AbstractFixedEffectMatrix{T}
 end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
-	m = FixedEffectMatrix(fes, sqrtw, Val{:lsmr})
-	nobs = length(first(m.caches))
-	FixedEffectLSMRGPU(
-		FixedEffectLSMR(cu.(m.fes), cu.(m.scales), cu.(m.caches), cu(m.xs), cu(m.v), cu(m.h), cu(m.hbar), cu(m.u), CuVector{Float32}(m.sqrtw)),
-		Vector{Float32}(undef, nobs), CuVector{Float32}(undef, nobs))
+	fes = cu.(m.fes)
+	sqrtw = CuVector{Float32}(m.sqrtw)
+	n = length(sqrtw)
+	scales = [_scale!(CuVector{Float32}(undef, fe.n), fe, sqrtw) for fe in fes] 
+	caches = [_cache!(CuVector{Float32}(undef, n), fe, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
+	xs = FixedEffectCoefficients([CuVector{Float32}(undef, fe.n) for fe in fes])
+	v = FixedEffectCoefficients([CuVector{Float32}(undef, fe.n) for fe in fes])
+	h = FixedEffectCoefficients([CuVector{Float32}(undef, fe.n) for fe in fes])
+	hbar = FixedEffectCoefficients([CuVector{Float32}(undef, fe.n) for fe in fes])
+	fill!(v, 0.0)
+	fill!(h, 0.0)
+	fill!(hbar, 0.0)
+	u = CuVector{Float32}(undef, n)
+	tmp = Vector{Float32}(undef, n)
+	tmp2 = CuVector{Float32}(undef, n)
+	FixedEffectLSMRGPU(FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw), tmp, tmp2)
 end
 function CuArrays.cu(fe::FixedEffect)
 	refs = CuArray(fe.refs)
 	interaction = CuVector{Float32}(fe.interaction)
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
 end
-CuArrays.cu(x::FixedEffectCoefficients) = FixedEffectCoefficients(cu.(x.x))
 
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)

@@ -125,18 +125,22 @@ end
 ##############################################################################\
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr}})
-    scales = [_scale(fe, sqrtw) for fe in fes] 
-    caches = [_cache(fe, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
-    xs =  FixedEffectCoefficients([zeros(fe.n) for fe in fes])
-    v =  FixedEffectCoefficients([zeros(fe.n) for fe in fes])
-    h =  FixedEffectCoefficients([zeros(fe.n) for fe in fes])
-    hbar =  FixedEffectCoefficients([zeros(fe.n) for fe in fes])
-    u = zeros(length(first(fes)))
+    n = length(sqrtw)
+    scales = [_scale!(Vector{Float64}(undef, fe.n), fe, sqrtw) for fe in fes] 
+    caches = [_cache!(Vector{Float64}(undef, n), fe, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
+    xs = FixedEffectCoefficients([Vector{Float64}(undef, fe.n) for fe in fes])
+    v = FixedEffectCoefficients([Vector{Float64}(undef, fe.n) for fe in fes])
+    h = FixedEffectCoefficients([Vector{Float64}(undef, fe.n) for fe in fes])
+    hbar = FixedEffectCoefficients([Vector{Float64}(undef, fe.n) for fe in fes])
+    fill!(v, 0.0)
+    fill!(h, 0.0)
+    fill!(hbar, 0.0)
+    u = Vector{Float64}(undef, n)
     return FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw)
 end
 
-function _scale(fe::FixedEffect, sqrtw::AbstractVector)
-    out = zeros(eltype(sqrtw), fe.n)
+function _scale!(out, fe::FixedEffect, sqrtw::AbstractVector)
+    fill!(out, 0.0)
     for i in eachindex(fe.refs)
         out[fe.refs[i]] += abs2(fe.interaction[i] * sqrtw[i])
     end
@@ -146,8 +150,7 @@ function _scale(fe::FixedEffect, sqrtw::AbstractVector)
     return out
 end
 
-function _cache(fe::FixedEffect, scale::AbstractVector, sqrtw::AbstractVector)
-    out = zeros(eltype(sqrtw), length(fe.refs))
+function _cache!(out, fe::FixedEffect, scale::AbstractVector, sqrtw::AbstractVector)
     @inbounds @simd for i in eachindex(out)
         out[i] = scale[fe.refs[i]] * fe.interaction[i] * sqrtw[i]
     end
