@@ -65,7 +65,9 @@ function CuArrays.cu(fe::FixedEffect)
 	interaction = CuArray(convert(Vector{Float32}, fe.interaction))
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
 end
+
 CuArrays.cu(x::FixedEffectCoefficients) = FixedEffectCoefficients(cu.(x.x))
+
 function CuArrays.cu(m::FixedEffectLSMR)
 	FixedEffectLSMR(cu.(m.fes), cu.(m.scales), cu.(m.caches), cu(m.xs), cu(m.v), cu(m.h), cu(m.hbar), cu(m.u), CuArray(convert(Vector{Float32}, m.sqrtw)))
 end
@@ -77,6 +79,17 @@ function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	copyto!(r, collect(cur)), iterations, converged
 end
 
+# does not like views
+function solve_residuals!(X::AbstractMatrix, feM::FixedEffectLSMRGPU; kwargs...)
+	iterations = zeros(Int, size(X, 2))
+	convergeds = zeros(Bool, size(X, 2))
+	for j in 1:size(X, 2)
+	     X[:, j], iteration, converged = solve_residuals!(X[:, j], feM; kwargs...)
+	     iterations[j] = iteration
+	     convergeds[j] = converged
+	end
+	return X, iterations, convergeds
+end
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	cur = cu(r)
 	iterations, converged = _solve_coefficients!(cur, feM.m)
