@@ -5,30 +5,9 @@
 ##############################################################################
 using .CuArrays
 using .CuArrays.CUDAnative
+import .CuArrays: allowscalar
 
-.CuArrays.allowscalar(false)
-
-# convert FixedEffects between CPU and GPU
-function CuArrays.cu(fe::FixedEffect)
-	refs = CuArray(fe.refs)
-	interaction = CuArray(convert(Vector{Float32}, fe.interaction))
-	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
-end
-
-function Base.collect(fe::FixedEffect{<: CuVector})
-	refs = collect(fe.refs)
-	interaction = collect(fe.interaction)
-	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
-end
-
-# convert FixedEffectCoefficient between CPU and GPU
-CuArrays.cu(x::FixedEffectCoefficients) = FixedEffectCoefficients(cu.(x.x))
-Base.collect(x::FixedEffectCoefficients{<: CuVector}) = FixedEffectCoefficients(collect.(x.x))
-
-# convert FixedEffectLSMR between CPU and GPU
-function CuArrays.cu(m::FixedEffectLSMR)
-	FixedEffectLSMR(cu.(m.fes), cu.(m.scales), cu.(m.caches), cu(m.xs), cu(m.v), cu(m.h), cu(m.hbar), cu(m.u), CuArray(convert(Vector{Float32}, m.sqrtw)))
-end
+allowscalar(false)
 
 ##############################################################################
 ##
@@ -67,6 +46,15 @@ function demean_kernel!(y, fecoef, refs, α, cache)
     return nothing
 end
 
+
+##############################################################################
+##
+## Implement AbstractRixedEffectMatrix Interface
+##
+##############################################################################
+
+
+
 ##############################################################################
 ##
 ## Implement AbstractRixedEffectMatrix Interface
@@ -79,6 +67,18 @@ end
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
 	FixedEffectLSMRGPU(cu(FixedEffectMatrix(fes, sqrtw, Val{:lsmr})))
 end
+
+# convert FixedEffects between CPU and GPU
+function CuArrays.cu(fe::FixedEffect)
+	refs = CuArray(fe.refs)
+	interaction = CuArray(convert(Vector{Float32}, fe.interaction))
+	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
+end
+CuArrays.cu(x::FixedEffectCoefficients) = FixedEffectCoefficients(cu.(x.x))
+function CuArrays.cu(m::FixedEffectLSMR)
+	FixedEffectLSMR(cu.(m.fes), cu.(m.scales), cu.(m.caches), cu(m.xs), cu(m.v), cu(m.h), cu(m.hbar), cu(m.u), CuArray(convert(Vector{Float32}, m.sqrtw)))
+end
+
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	cur = cu(r)
@@ -93,3 +93,10 @@ function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs.
 	fes = collect.(feM.m.fes)
 	full(normalize!(xs, fes; kwargs...), fes), iterations, converged
 end
+
+function Base.collect(fe::FixedEffect{<: CuVector})
+	refs = collect(fe.refs)
+	interaction = collect(fe.interaction)
+	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
+end
+
