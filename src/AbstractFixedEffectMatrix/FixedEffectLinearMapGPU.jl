@@ -4,7 +4,8 @@
 ## LSMR GPU
 ##
 ##############################################################################
-using .CuArrays, .CUDAnative
+using .CuArrays
+using 
 
 # convert FixedEffects between CPU and GPU
 function CuArrays.CuArray(x::FixedEffect)
@@ -37,7 +38,7 @@ end
 function mean!(fecoef::CuVector, refs::CuVector, y::CuVector, α::Number, cache::CuVector)
     nthreads = 256
     nblocks = div(length(y), nthreads) + 1
-    @cuda threads = nthreads blocks = nblocks mean_kernel!(fecoef, refs, y, α, cache)
+    .CuArrays.CUDAnative.@cuda threads = nthreads blocks = nblocks mean_kernel!(fecoef, refs, y, α, cache)
 end
 
 function mean_kernel!(fecoef, refs, y, α, cache)
@@ -45,7 +46,7 @@ function mean_kernel!(fecoef, refs, y, α, cache)
     stride = blockDim().x * gridDim().x
     @inbounds for i in index:stride:length(y)
         r = refs[i]
-        CUDAnative.atomic_add!(pointer(fecoef, r), y[i] * α * cache[i])
+        .CuArrays.CUDAnative.atomic_add!(pointer(fecoef, r), y[i] * α * cache[i])
     end
     return nothing
 end
