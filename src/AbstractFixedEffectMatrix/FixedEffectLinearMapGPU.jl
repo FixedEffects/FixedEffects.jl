@@ -58,8 +58,8 @@ struct FixedEffectLSMRGPU{T} <: AbstractFixedEffectMatrix{T}
 end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
-	fes = cu.(m.fes)
-	sqrtw = CuVector{Float32}(m.sqrtw)
+	fes = cu.(fes)
+	sqrtw = CuVector{Float32}(sqrtw)
 	n = length(sqrtw)
 	scales = [_scale!(CuVector{Float32}(undef, fe.n), fe, sqrtw) for fe in fes] 
 	caches = [_cache!(CuVector{Float32}(undef, n), fe, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
@@ -80,7 +80,6 @@ function CuArrays.cu(fe::FixedEffect)
 	interaction = CuVector{Float32}(fe.interaction)
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
 end
-
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	# views, Float64 to Float32
