@@ -82,7 +82,7 @@ end
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	cur = CuArray(r)
 	cur, iterations, converged = solve_residuals!(cur, feM.m; kwargs...)
-	copy!(r, collect(cur)), iterations, converged
+	copyto!(r, cur), iterations, converged
 end
 
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
