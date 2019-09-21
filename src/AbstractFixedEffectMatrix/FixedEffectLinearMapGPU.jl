@@ -65,6 +65,7 @@ function cache!(y::CuVector, refs::CuVector, interaction::CuVector, fecoef::CuVe
 	nthreads = 256
 	nblocks = div(length(y), nthreads) + 1
 	@cuda threads=nthreads blocks=nblocks cache_kernel!(y, refs, interaction, fecoef, sqrtw)
+	return y
 end
 
 function cache_kernel!(y, refs, interaction, fecoef, sqrtw)
