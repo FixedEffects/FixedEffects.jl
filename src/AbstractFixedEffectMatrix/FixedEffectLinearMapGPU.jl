@@ -113,8 +113,8 @@ function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::
 	fes_gpu = [cu(Float32, fe) for fe in fes]
 	sqrtw = cu(Float32, sqrtw)
 	n = length(sqrtw)
-	scales = FixedEffectCoefficients([scale!(cuzeros(Float32, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes_gpu])
-	caches = [cache!(cuzeros(Float32, n), fe.refs, fe.interaction, scale, sqrtw) for (fe, scale) in zip(fes_gpu, scales.x)]
+	scales = [scale!(cuzeros(Float32, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes_gpu]
+	caches = [cache!(cuzeros(Float32, n), fe.refs, fe.interaction, scale, sqrtw) for (fe, scale) in zip(fes_gpu, scales)]
 	xs = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes_gpu])
 	v = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes_gpu])
 	h = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes_gpu])

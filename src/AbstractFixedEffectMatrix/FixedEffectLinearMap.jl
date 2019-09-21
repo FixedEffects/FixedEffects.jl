@@ -59,7 +59,7 @@ end
 
 struct FixedEffectLSMR{T} <: AbstractFixedEffectMatrix{T}
     fes::Vector{<:FixedEffect}
-    scales::FixedEffectCoefficients{T}
+    scales::Vector{<:AbstractVector}
     caches::Vector{<:AbstractVector}
     xs::FixedEffectCoefficients{T}
     v::FixedEffectCoefficients{T}
@@ -125,8 +125,8 @@ end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr}})
     n = length(sqrtw)
-    scales = FixedEffectCoefficients([scale!(zeros(fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes])
-    caches = [cache!(zeros(n), fe.refs, fe.interaction, scale, sqrtw) for (fe, scale) in zip(fes, scales.x)]
+    scales = [scale!(zeros(fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes]
+    caches = [cache!(zeros(n), fe.refs, fe.interaction, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
     xs = FixedEffectCoefficients([zeros(fe.n) for fe in fes])
     v = FixedEffectCoefficients([zeros(fe.n) for fe in fes])
     h = FixedEffectCoefficients([zeros(fe.n) for fe in fes])
@@ -165,7 +165,7 @@ end
 function _solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
 	r .*= feM.sqrtw
 	iterations, converged = solve!(feM, r; kwargs...)
-	for (x, scale) in zip(feM.xs.x, feM.scales.x)
+	for (x, scale) in zip(feM.xs.x, feM.scales)
 	    x .*=  scale
 	end
 	iterations, converged

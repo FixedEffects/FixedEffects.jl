@@ -61,7 +61,7 @@ function solve_residuals!(X::AbstractMatrix, feM::FixedEffectLSMRThreads; kwargs
    iterations = zeros(Int, size(X, 2))
    convergeds = zeros(Bool, size(X, 2))
    Threads.@threads for j in 1:size(X, 2)
-        X[:, j], iteration, converged = solve_residuals!(X[:, j], feM; kwargs...)
+        _, iteration, converged = solve_residuals!(X[:, j], feM; kwargs...)
         iterations[j] = iteration
         convergeds[j] = converged
    end
