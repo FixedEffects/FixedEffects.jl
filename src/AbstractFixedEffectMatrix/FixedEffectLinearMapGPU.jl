@@ -95,7 +95,6 @@ function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::
 	FixedEffectLSMRGPU(FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw), tmp, CuVector{Float32}(undef, n))
 end
 
-
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	copyto!(feM.tmp, r)
 	copyto!(feM.tmp2, feM.tmp)
