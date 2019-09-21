@@ -67,6 +67,8 @@ end
 ##
 ## Implement AbstractRixedEffectMatrix Interface
 ##
+## GC accounts for large part of timing so important to have temporary arrays
+##
 ##############################################################################
 struct FixedEffectLSMRGPU{T} <: AbstractFixedEffectMatrix{T}
 	m::FixedEffectLSMR{T}
@@ -78,7 +80,7 @@ function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::
 	scales = [scale(fe, sqrtw) for fe in fes]
 	n = length(sqrtw)
 	tmp = Vector{Float32}(undef, n)
-	caches = [CuVector{Float32}(_cache!(tmp, fe, scale, sqrtw)) for (fe, scale) in zip(fes, scales)]
+	caches = [cu(_cache!(tmp, fe, scale, sqrtw)) for (fe, scale) in zip(fes, scales)]
 	scales = cu.(scales)
 	fes = cu.(fes)
 	sqrtw = CuVector{Float32}(sqrtw)
