@@ -97,9 +97,9 @@ end
 # because zeros gives gpu
 cuzeros(T, n::Integer) = fill!(CuVector{T}(undef, n), zero(T))
 # because copyto! is slow without numbers
-Base.copy!(x::CuVector, y::AbstractVector) = copyto!(x, 1, y, 1)
-Base.copy!(x::AbstractVector, y::CuVector) = copyto!(x, 1, y, 1)
-Base.copy!(x::CuVector, y::CuVector) = copyto!(x, 1, y, 1)
+Base.copy!(x::CuVector{Float32}, y::Vector{Float32}) = copyto!(x, 1, y, 1)
+Base.copy!(x::Vector{Float32}, y::CuVector{Float32}) = copyto!(x, 1, y, 1)
+Base.copy!(x::CuVector{Float32}, y::CuVector{Float32}) = copyto!(x, 1, y, 1)
 
 ##############################################################################
 ##
