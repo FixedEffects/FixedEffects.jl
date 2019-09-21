@@ -3,7 +3,7 @@
 ## FixedEffectCoefficients : vector x in A'Ax = A'b
 ##
 ## We define these methods used in lsmr! (duck typing): 
-## copyto!, fill!, rmul!, axpy!, norm
+## copy!, fill!, rmul!, axpy!, norm
 ##
 ##############################################################################
 
@@ -32,9 +32,9 @@ function rmul!(xs::FixedEffectCoefficients, α::Number)
     return xs
 end
 
-function copyto!(xs1::FixedEffectCoefficients, xs2::FixedEffectCoefficients)
+function copy!(xs1::FixedEffectCoefficients, xs2::FixedEffectCoefficients)
     for (x1, x2) in zip(xs1, xs2)
-        copyto!(x1, x2)
+        copy!(x1, x2)
     end
     return xs1
 end
@@ -112,7 +112,7 @@ end
 function solve!(feM::FixedEffectLSMR, r::AbstractVector; 
     tol::Real = 1e-8, maxiter::Integer = 100_000)
     fill!(feM.xs, 0.0)
-    copyto!(feM.u, r)
+    copy!(feM.u, r)
     x, ch = lsmr!(feM.xs, feM, feM.u, feM.v, feM.h, feM.hbar; 
         atol = tol, btol = tol, conlim = 1e8, maxiter = maxiter)
     return div(ch.mvps, 2), ch.isconverged

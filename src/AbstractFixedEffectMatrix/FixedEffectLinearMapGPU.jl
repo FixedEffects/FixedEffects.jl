@@ -94,6 +94,13 @@ function Base.collect(fe::FixedEffect{<: CuVector})
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
 end
 
+# because zeros gives gpu
+cuzeros(T, n::Integer) = fill!(CuVector{T}(undef, n), zero(T))
+# because copyto! is slow without numbers
+Base.copy!(x::CuVector, y::AbstractVector) = copyto!(x, 1, y, 1)
+Base.copy!(x::AbstractVector, y::CuVector) = copyto!(x, 1, y, 1)
+Base.copy!(x::CuVector, y::CuVector) = copyto!(x, 1, y, 1)
+
 ##############################################################################
 ##
 ## Implement AbstractRixedEffectMatrix Interface
@@ -121,21 +128,19 @@ function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::
 	u = cuzeros(Float32, n)
 	FixedEffectLSMRGPU(FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw), zeros(Float32, n), cuzeros(Float32, n))
 end
-# CuArrays.zero does not give CuVector
-cuzeros(T, n::Integer) = fill!(CuVector{T}(undef, n), zero(T))
 
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
-	copyto!(feM.tmp, r)
-	copyto!(feM.tmp2, feM.tmp)
+	copy!(feM.tmp, r)
+	copy!(feM.tmp2, feM.tmp)
 	_, iterations, converged = solve_residuals!(feM.tmp2, feM.m; kwargs...)
-	copyto!(feM.tmp, feM.tmp2)
-	copyto!(r, feM.tmp), iterations, converged
+	copy!(feM.tmp, feM.tmp2)
+	copy!(r, feM.tmp), iterations, converged
 end
 
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
-	copyto!(feM.tmp, r)
-	copyto!(feM.tmp2, feM.tmp)
+	copy!(feM.tmp, r)
+	copy!(feM.tmp2, feM.tmp)
 	iterations, converged = _solve_coefficients!(feM.tmp2, feM.m)
 	xs = collect.(feM.m.xs.x)
 	fes = collect.(feM.m.fes)
