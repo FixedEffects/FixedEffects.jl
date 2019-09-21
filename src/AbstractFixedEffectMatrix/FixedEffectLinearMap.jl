@@ -7,7 +7,7 @@
 ##
 ##############################################################################
 
-struct FixedEffectCoefficients{T} <: AbstractVector{T}
+struct FixedEffectCoefficients{T}
     x::Vector{<:AbstractVector{T}}
 end
 Base.iterate(xs::FixedEffectCoefficients) = iterate(xs.x)
@@ -60,7 +60,7 @@ end
 
 struct FixedEffectLSMR{T} <: AbstractFixedEffectMatrix{T}
     fes::Vector{<:FixedEffect}
-    scales::Vector{<:AbstractVector}
+    scales::FixedEffectCoefficients{T}
     caches::Vector{<:AbstractVector}
     xs::FixedEffectCoefficients{T}
     v::FixedEffectCoefficients{T}
@@ -126,32 +126,28 @@ end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr}})
     n = length(sqrtw)
-    scales = [scale(fe, sqrtw) for fe in fes] 
-    caches = [_cache!(Vector{Float64}(undef, n), fe, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
+    scales = FixedEffectCoefficients([scale!(zeros(fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes])
+    caches = [cache!(zeros(n), fe.refs, fe.interaction, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
     xs = FixedEffectCoefficients([zeros(fe.n) for fe in fes])
     v = FixedEffectCoefficients([zeros(fe.n) for fe in fes])
     h = FixedEffectCoefficients([zeros(fe.n) for fe in fes])
     hbar = FixedEffectCoefficients([zeros(fe.n) for fe in fes])
-    u = Vector{Float64}(undef, n)
+    u = zeros(n)
     return FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw)
 end
 
-function scale(fe::FixedEffect, sqrtw::AbstractVector)
-    out = zeros(fe.n)
-    for i in eachindex(fe.refs)
-        out[fe.refs[i]] += abs2(fe.interaction[i] * sqrtw[i])
+function scale!(fecoef::AbstractVector, refs::AbstractVector, interaction::AbstractVector, sqrtw::AbstractVector)
+    @inbounds @simd for i in eachindex(refs)
+        fecoef[refs[i]] += abs2(interaction[i] * sqrtw[i])
     end
-    for i in eachindex(out)
-        out[i] = out[i] > 0.0 ? (1.0 / sqrt(out[i])) : 0.0
-    end
-    return out
+    fecoef .= 1.0 ./ sqrt.(fecoef)
 end
 
-function _cache!(out, fe::FixedEffect, scale::AbstractVector, sqrtw::AbstractVector)
-    @inbounds @simd for i in eachindex(out)
-        out[i] = scale[fe.refs[i]] * fe.interaction[i] * sqrtw[i]
+function cache!(y::AbstractVector, refs::AbstractVector, interaction::AbstractVector, fecoef::AbstractVector, sqrtw::AbstractVector)
+    @inbounds @simd for i in eachindex(y)
+        y[i] = fecoef[refs[i]] * interaction[i] * sqrtw[i]
     end
-    return out
+    return y
 end
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)

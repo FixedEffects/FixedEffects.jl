@@ -25,8 +25,7 @@ function mean_kernel!(fecoef, refs, y, α, cache)
     index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     stride = blockDim().x * gridDim().x
     @inbounds for i = index:stride:length(y)
-        r = refs[i]
-        CuArrays.CUDAnative.atomic_add!(pointer(fecoef, r), y[i] * α * cache[i])
+        CuArrays.CUDAnative.atomic_add!(pointer(fecoef, refs[i]), y[i] * α * cache[i])
     end
     return nothing
 end
@@ -40,10 +39,41 @@ end
 function demean_kernel!(y, fecoef, refs, α, cache)
     index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
     stride = blockDim().x * gridDim().x
-    for i = index:stride:length(y)
-    	@inbounds y[i] += fecoef[refs[i]] * α * cache[i]
+    @inbounds for i = index:stride:length(y)
+    	y[i] += fecoef[refs[i]] * α * cache[i]
     end
     return nothing
+end
+
+function scale!(fecoef::CuVector, refs::CuVector, y::CuVector, sqrtw::CuVector)
+	nthreads = 256
+	nblocks = div(length(y), nthreads) + 1
+	@cuda threads=nthreads blocks=nblocks scale_kernel!(fecoef, refs, y, sqrtw)
+	fecoef .= 1.0 ./ sqrt.(fecoef)
+end
+
+function scale_kernel!(fecoef, refs, y, sqrtw)
+	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+	stride = blockDim().x * gridDim().x
+	@inbounds for i = index:stride:length(y)
+	    CuArrays.CUDAnative.atomic_add!(pointer(fecoef, refs[i]), abs2(y[i] * sqrtw[i]))
+	end
+	return nothing
+end
+
+function cache!(y::CuVector, refs::CuVector, interaction::CuVector, fecoef::CuVector, sqrtw::CuVector)
+	nthreads = 256
+	nblocks = div(length(y), nthreads) + 1
+	@cuda threads=nthreads blocks=nblocks cache_kernel!(y, refs, interaction, fecoef, sqrtw)
+end
+
+function cache_kernel!(y::CuVector, refs::CuVector, interaction::CuVector, fecoef::CuVector, sqrtw::CuVector)
+	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+	stride = blockDim().x * gridDim().x
+	@inbounds for i = index:stride:length(y)
+		y[i] += fecoef[refs[i]] * interaction[i] * sqrtw[i]
+	end
+	return nothing
 end
 
 ##############################################################################
@@ -70,6 +100,7 @@ end
 ## GC accounts for large part of timing so important to have temporary arrays
 ##
 ##############################################################################
+
 struct FixedEffectLSMRGPU{T} <: AbstractFixedEffectMatrix{T}
 	m::FixedEffectLSMR{T}
 	tmp::Vector{T} 	# used to convert Abstract{Float64} to Vector{Float32}
@@ -77,23 +108,21 @@ struct FixedEffectLSMRGPU{T} <: AbstractFixedEffectMatrix{T}
 end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
-	scales = [scale(fe, sqrtw) for fe in fes]
-	n = length(sqrtw)
-	tmp = Vector{Float32}(undef, n)
-	caches = [cu(_cache!(tmp, fe, scale, sqrtw)) for (fe, scale) in zip(fes, scales)]
 	fes = cu.(fes)
 	sqrtw = CuVector{Float32}(sqrtw)
-	scales = cu.(scales)
-	xs = FixedEffectCoefficients([CuVector{Float32}(undef, fe.n) for fe in fes])
-	v = FixedEffectCoefficients([CuVector{Float32}(undef, fe.n) for fe in fes])
-	h = FixedEffectCoefficients([CuVector{Float32}(undef, fe.n) for fe in fes])
-	hbar = FixedEffectCoefficients([CuVector{Float32}(undef, fe.n) for fe in fes])
-	fill!(v, 0.0)
-	fill!(h, 0.0)
-	fill!(hbar, 0.0)
-	u = CuVector{Float32}(undef, n)
-	FixedEffectLSMRGPU(FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw), tmp, CuVector{Float32}(undef, n))
+	n = length(sqrtw)
+	scales = FixedEffectCoefficients([scale!(cuzeros(fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes])
+	caches = [cache!(cuzeros(n), fe.refs, fe.interaction, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
+	xs = FixedEffectCoefficients([cuzeros(fe.n) for fe in fes])
+	v = FixedEffectCoefficients([cuzeros(fe.n) for fe in fes])
+	h = FixedEffectCoefficients([cuzeros(fe.n) for fe in fes])
+	hbar = FixedEffectCoefficients([cuzeros(fe.n) for fe in fes])
+	u = cuzeros(n)
+	FixedEffectLSMRGPU(FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw), Vector{Float32}(undef, n), CuVector{Float32}(undef, n))
 end
+# CuArrays.zero does not give CuVector
+cuzeros(n::Integer) = fill!(CuVector{Float32}(undef, n), 0)
+
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	copyto!(feM.tmp, r)
