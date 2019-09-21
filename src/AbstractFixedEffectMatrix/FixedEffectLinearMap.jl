@@ -5,12 +5,14 @@
 ## We define these methods used in lsmr! (duck typing): 
 ## copyto!, fill!, rmul!, axpy!, norm
 ##
+## Do not define iteration on each fixedeffect since it would conflict with eltype
+##
 ##############################################################################
 
 struct FixedEffectCoefficients{T}
     x::Vector{<:AbstractVector{T}}
 end
-# don't define iteration on each fixedeffect since conflicts with eltype
+
 eltype(xs::FixedEffectCoefficients{T}) where {T} = T
 length(xs::FixedEffectCoefficients) = sum(length(x) for x in xs.x)
 norm(xs::FixedEffectCoefficients) = sqrt(sum(sum(abs2, x) for x in xs.x))
