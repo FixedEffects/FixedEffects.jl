@@ -114,7 +114,7 @@ function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::
 	sqrtw = cu(Float32, sqrtw)
 	n = length(sqrtw)
 	scales = FixedEffectCoefficients([scale!(cuzeros(Float32, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes_gpu])
-	caches = [cache!(cuzeros(Float32, n), fe.refs, fe.interaction, scale, sqrtw) for (fe, scale) in zip(fes_gpu, scales)]
+	caches = [cache!(cuzeros(Float32, n), fe.refs, fe.interaction, scale, sqrtw) for (fe, scale) in zip(fes_gpu, scales.x)]
 	xs = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes_gpu])
 	v = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes_gpu])
 	h = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes_gpu])
@@ -136,8 +136,7 @@ function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs.
 	copyto!(feM.tmp, r)
 	copyto!(feM.tmp2, feM.tmp)
 	iterations, converged = _solve_coefficients!(feM.tmp2, feM.m)
-	xs = [collect(x) for x in feM.m.xs.x]
-	full(normalize!(xs, feM.fes; kwargs...), feM.fes), iterations, converged
+	full(normalize!(collect.(feM.m.xs.x), feM.fes; kwargs...), feM.fes), iterations, converged
 end
 
 
