@@ -67,7 +67,7 @@ function cache!(y::CuVector, refs::CuVector, interaction::CuVector, fecoef::CuVe
 	@cuda threads=nthreads blocks=nblocks cache_kernel!(y, refs, interaction, fecoef, sqrtw)
 end
 
-function cache_kernel!(y::CuVector, refs::CuVector, interaction::CuVector, fecoef::CuVector, sqrtw::CuVector)
+function cache_kernel!(y, refs, interaction, fecoef, sqrtw)
 	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
 	@inbounds for i = index:stride:length(y)
@@ -81,7 +81,7 @@ end
 ## Conversion FixedEffect between CPU and GPU
 ##
 ##############################################################################
-function CuArrays.cu(T, fe::FixedEffect)
+function CuArrays.cu(T::Type, fe::FixedEffect)
 	refs = CuArray(fe.refs)
 	interaction = CuVector{T}(fe.interaction)
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
