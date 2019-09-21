@@ -31,7 +31,7 @@ end
 ## (this includes SparseMatrixCSC)
 ## x, v, h, hbar are AbstractVectors or anything that implements
 ## norm(x)
-## copy!(x1, x2)
+## copyto!(x1, x2)
 ## rmul!(x, α)
 ## axpy!(α, x1, x2)
 ## similar(x, T)
@@ -39,7 +39,7 @@ end
 ## b is an AbstractVector or anything that implements
 ## eltype(b)
 ## norm(b)
-## copy!(x1, x2)
+## copyto!(x1, x2)
 ## fill!(b, α)
 ## rmul!(b, α)
 ## similar(b, T)
@@ -87,7 +87,7 @@ function lsmr!(x, A, b, v, h, hbar;
     cbar = one(Tr)
     sbar = zero(Tr)
 
-    copy!(h, v)
+    copyto!(h, v)
     fill!(hbar, zero(Tr))
 
     # Initialize variables for estimation of ||r||.

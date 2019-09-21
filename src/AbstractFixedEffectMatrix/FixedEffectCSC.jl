@@ -74,7 +74,7 @@ end
 
 function solve!(feM::FixedEffectQR, r::AbstractVector ; kwargs...) 
     # since \ needs a vector
-    copy!(feM.b, r)
+    copyto!(feM.b, r)
     feM.qrm \ feM.b
 end
 

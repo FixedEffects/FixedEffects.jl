@@ -97,9 +97,9 @@ end
 # because zeros gives gpu
 cuzeros(T, n::Integer) = fill!(CuVector{T}(undef, n), zero(T))
 # because copyto! is slow without numbers
-Base.copy!(x::CuVector{Float32}, y::Vector{Float32}) = copyto!(x, 1, y, 1)
-Base.copy!(x::Vector{Float32}, y::CuVector{Float32}) = copyto!(x, 1, y, 1)
-Base.copy!(x::CuVector{Float32}, y::CuVector{Float32}) = copyto!(x, 1, y, 1)
+copyto!(x::CuVector{Float32}, y::Vector{Float32}) = copyto!(x, 1, y, 1)
+copyto!(x::Vector{Float32}, y::CuVector{Float32}) = copyto!(x, 1, y, 1)
+copyto!(x::CuVector{Float32}, y::CuVector{Float32}) = copyto!(x, 1, y, 1)
 
 ##############################################################################
 ##
@@ -131,16 +131,16 @@ end
 
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
-	copy!(feM.tmp, r)
-	copy!(feM.tmp2, feM.tmp)
+	copyto!(feM.tmp, r)
+	copyto!(feM.tmp2, feM.tmp)
 	_, iterations, converged = solve_residuals!(feM.tmp2, feM.m; kwargs...)
-	copy!(feM.tmp, feM.tmp2)
-	copy!(r, feM.tmp), iterations, converged
+	copyto!(feM.tmp, feM.tmp2)
+	copyto!(r, feM.tmp), iterations, converged
 end
 
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
-	copy!(feM.tmp, r)
-	copy!(feM.tmp2, feM.tmp)
+	copyto!(feM.tmp, r)
+	copyto!(feM.tmp2, feM.tmp)
 	iterations, converged = _solve_coefficients!(feM.tmp2, feM.m)
 	xs = collect.(feM.m.xs.x)
 	fes = collect.(feM.m.fes)
