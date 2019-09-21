@@ -161,13 +161,13 @@ function _cache!(out, fe::FixedEffect, scale::AbstractVector, sqrtw::AbstractVec
 end
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
-    start = time()
+    #start = time()
     r .*= feM.sqrtw   
     iterations, converged = solve!(feM, r; kwargs...)
     mul!(r, feM, feM.xs, -1.0, 1.0)
     r ./=  feM.sqrtw
-    finish = time()
-    println("solve! took $(finish-start) seconds")
+    #finish = time()
+    #println("solve! took $(finish-start) seconds")
     return r, iterations, converged
 end
 

@@ -94,7 +94,12 @@ end
 
 function Base.collect(fe::FixedEffect{<: CuVector})
 	refs = collect(fe.refs)
-	interaction = collect(fe.interaction)
+    if all(fe.interaction .≈ 1)
+        # The check for no interaction in normalize! requires isa(Ones, interaction)
+        interaction = Ones{Float64}(length(refs))
+    else
+	    interaction = collect(fe.interaction)
+    end
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
 end
 
