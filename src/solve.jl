@@ -30,9 +30,13 @@ p2 = repeat(1:5, outer = 2)
 solve_residuals!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
-function solve_residuals!(y::Union{AbstractVector, AbstractMatrix}, fes::AbstractVector{<: FixedEffect}, weights::AbstractWeights = Weights(Ones{eltype(y)}(size(y, 1))); method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8)
+function solve_residuals!(y::Union{AbstractVector, AbstractMatrix}, fes::AbstractVector{<: FixedEffect}, weights::AbstractWeights = Weights(Ones{eltype(y)}(size(y, 1))); method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8, gpufloat=Float64)
     any(ismissing.(fes)) && error("Some FixedEffect has a missing value for reference or interaction")
-    feM = FixedEffectMatrix(fes, sqrt.(weights.values), Val{method})
+    if (method==:lsmr_gpu)         
+        feM = FixedEffectMatrix(fes, sqrt.(weights.values), Val{method}, FloatType=gpufloat)
+    else
+        feM = FixedEffectMatrix(fes, sqrt.(weights.values), Val{method})
+    end
     y, iteration, converged = solve_residuals!(y, feM; maxiter = maxiter, tol = tol)
 end
 
@@ -51,7 +55,7 @@ end
 Solve a least square problem for a set of FixedEffects
 
 `solve_coefficients!(y, fes, weights; method = :lsmr, maxiter = 10000, tol = 1e-8)`
-
+d
 ### Arguments
 * `y` : A `AbstractVector` 
 * `fes`: A `Vector{<:FixedEffect}`
@@ -59,7 +63,7 @@ Solve a least square problem for a set of FixedEffects
 * `method` : A `Symbol` for the method. Choices are :lsmr, :lsmr_threads, :lsmr_parallel, :qr and :cholesky
 * `maxiter` : Maximum number of iterations
 * `tol` : Tolerance
-
+* `gpufloat` : floating point data type to use on GPU. If you choose something other than `Float64`, you should adjust `tol` accordingly.
 
 ### Returns
 * `b` : Solution of the least square problem
@@ -79,8 +83,12 @@ x = rand(10)
 solve_coefficients!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
-function solve_coefficients!(y::AbstractVector, fes::AbstractVector{<: FixedEffect}, weights::AbstractWeights  = Weights(Ones{eltype(y)}(length(y))); method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8)
+function solve_coefficients!(y::AbstractVector, fes::AbstractVector{<: FixedEffect}, weights::AbstractWeights  = Weights(Ones{eltype(y)}(length(y))); method::Symbol = :lsmr, maxiter::Integer = 10000, tol::Real = 1e-8, gpufloat=Float64)
     any(ismissing.(fes)) && error("Some FixedEffect has a missing value for reference or interaction")
-    feM = FixedEffectMatrix(fes, sqrt.(weights.values), Val{method})
+    if (method==:lsmr_gpu)
+        feM = FixedEffectMatrix(fes, sqrt.(weights.values), Val{method}, FloatType=gpufloat)
+    else
+        feM = FixedEffectMatrix(fes, sqrt.(weights.values), Val{method})
+    end
     solve_coefficients!(y, feM; maxiter = maxiter, tol = tol)
 end

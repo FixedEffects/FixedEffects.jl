@@ -18,9 +18,10 @@ julia = "≥ 1.1.0"
 [extras]
 CuArrays = "3a865a2d-5b23-5a0f-bc46-62713ec82fae"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
-GLM = "38e38edf-8417-5370-95a0-9cbb8c7f171a"
+GPUArrays = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+StatsModels = "3eaba693-59b7-5ba5-a881-562e759f1c8d"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test", "DataFrames", "GLM", "Random"]
+test = ["Test", "DataFrames", "StatsModels", "Random"]

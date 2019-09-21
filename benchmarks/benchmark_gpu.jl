@@ -20,9 +20,11 @@ X = rand(N, 10)
 
 
 println("CPU, size(x)=$(size(x)), 2 fixed effects")
-@btime (r_c, it_c, conv_c)=solve_residuals!($x, [FixedEffect(id1), FixedEffect(id2)], method = :lsmr);
+@btime (r_c, it_c, conv_c)=solve_residuals!($x, [FixedEffect(id1), FixedEffect(id2)], method = :lsmr)
 println("GPU, size(x)=$(size(x)), 2 fixed effects")
-@btime (r_g, it_g, conv_g)=solve_residuals!($x, [FixedEffect(id1), FixedEffect(id2)], method = :lsmr_gpu);
+@btime (r_g, it_g, conv_g)=solve_residuals!($x, [FixedEffect(id1), FixedEffect(id2)], method = :lsmr_gpu)
+println("GPU Float32, size(x)=$(size(x)), 2 fixed effects")
+@btime (r_g, it_g, conv_g)=solve_residuals!($x, [FixedEffect(id1), FixedEffect(id2)], method = :lsmr_gpu,gpufloat=Float32, tol=sqrt(eps(Float32)))
 
 
 # Note that most of the GPU time is spend transferring memory 
@@ -31,18 +33,6 @@ Profile.clear()
 @profile solve_residuals!(x, [FixedEffect(id1), FixedEffect(id2)], method = :lsmr_gpu);
 Profile.print(noisefloor=1.0)
 
-# Multiple x
-X = [x x x x x x x x x x]
-
-println("CPU, size(X)=$(size(X)), 2 fixed effects")
-@btime (r_c, it_c, conv_c)=solve_residuals!($X, [FixedEffect(id1), FixedEffect(id2)]);
-println("GPU, size(X)=$(size(X)), 2 fixed effects")
-@btime (r_g, it_g, conv_g)=solve_residuals!($X, [FixedEffect(id1), FixedEffect(id2)], method = :lsmr_gpu);
-
-# Still most GPU time is copying memory (not surprising given how code works)
-Profile.clear()
-@profile solve_residuals!(X, [FixedEffect(id1), FixedEffect(id2)], method = :lsmr_gpu);
-Profile.print(noisefloor=1.0)
 
 # More complicated problem
 N = 8000000 # number of observations
@@ -57,8 +47,26 @@ end
 x = (pid .* fid .- mean(pid .* fid)) / std(pid .* fid)
 pid = categorical(pid)
 fid = categorical(fid)
-X = [x x x x]
-@time solve_residuals!(X, [FixedEffect(pid), FixedEffect(fid)])
-X = [x x x x]
-@time solve_residuals!(X, [FixedEffect(pid), FixedEffect(fid)], method = :lsmr_gpu)
+K = 1
+e = randn(length(x), K)
+X = repeat(x, outer=[1,K]) + e
 
+println("CPU")
+@time (rc,i,c)=solve_residuals!(copy(X), [FixedEffect(pid), FixedEffect(fid)],
+                                tol=sqrt(eps(Float32)))
+@show i
+
+println("GPU Float64")
+@time (rg6,i,c)=solve_residuals!(copy(X), [FixedEffect(pid), FixedEffect(fid)],
+                                 method = :lsmr_gpu,
+                                 tol=sqrt(eps(Float32)));  
+@show i
+
+println("GPU Float32")
+@time (rg3,i,c)=solve_residuals!(copy(X), [FixedEffect(pid), FixedEffect(fid)],
+                                 method = :lsmr_gpu, gpufloat=Float32,
+                                 tol=sqrt(eps(Float32)));
+@show i
+@show mean(rg3)
+@show mean(rg6)
+@show std(rg6-rg3)

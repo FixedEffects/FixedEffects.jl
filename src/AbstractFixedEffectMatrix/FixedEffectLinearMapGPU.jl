@@ -9,7 +9,7 @@ import .CuArrays: allowscalar
 
 allowscalar(false)
 
-const FloatType = Float64
+#const FloatType = Float64
 const defaultThreads = 256
 ##############################################################################
 ##
@@ -86,7 +86,7 @@ end
 ## Conversion FixedEffect between CPU and GPU
 ##
 ##############################################################################
-function CuArrays.cu(fe::FixedEffect)
+function CuArrays.cu(fe::FixedEffect, FloatType::DataType)
 	refs = CuArray(fe.refs)
 	interaction = CuVector{FloatType}(fe.interaction)
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
@@ -110,17 +110,17 @@ end
 ##############################################################################
 struct FixedEffectLSMRGPU{T} <: AbstractFixedEffectMatrix{T}
 	m::FixedEffectLSMR{T}
-	tmp::Vector{T} 	# used to convert views, Float64 to Vector{FloatType}
-	tmp2::CuVector{T} # used to convert Vector{FloatType} to CuVector{FloatType}
+    tmp::Vector{T}
+	tmp2::CuVector{T} # used to convert Vector{T} to CuVector{T}
 end
 
-function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
+function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}}; FloatType::DataType=Float64)
     n = length(sqrtw)
     #scales = [_scale!(Vector{FloatType}(undef, fe.n), fe, sqrtw) for fe in fes] 
     #caches = [_cache!(Vector{FloatType}(undef, n), fe, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
     #scales = cu.(scales)
     #caches = cu.(caches)
-	fes = cu.(fes)
+	fes = cu.(fes, FloatType)
 	sqrtw = CuVector{FloatType}(sqrtw)
     scales = [_scale!(CuVector{FloatType}(undef, fe.n), fe, sqrtw) for fe in fes]
 	caches = [_cache!(CuVector{FloatType}(undef, n), fe, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
@@ -132,24 +132,40 @@ function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::
 	fill!(h, zero(FloatType))
 	fill!(hbar, zero(FloatType))
 	u = CuVector{FloatType}(undef, n)    
-	tmp = Vector{FloatType}(undef, n)
     tmp2 = CuVector{FloatType}(undef, n)
+    tmp = Vector{FloatType}(undef,n)
 	FixedEffectLSMRGPU(FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw), tmp, tmp2)
+end
+
+# function copyresid!(r::Vector{Float64}, feM::FixedEffectLSMRGPU{Float64})
+#     copyto!(r, feM.tmp2)
+# end
+
+function copyresid!(r::AbstractVector, feM::FixedEffectLSMRGPU)
+    copyto!(feM.tmp, feM.tmp2)
+    copyto!(r, feM.tmp)
+end
+
+# function copyresid!(feM::FixedEffectLSMRGPU{Float64}, r::Vector{Float64})
+#     copyto!(feM.tmp2, r)
+# end
+
+function copyresid!(feM::FixedEffectLSMRGPU, r::AbstractVector)
+    copyto!(feM.tmp, r)
+    copyto!(feM.tmp2, feM.tmp)   
 end
 
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
-	copyto!(feM.tmp, r)
-        # CPU to GPU
-	copyto!(feM.tmp2, feM.tmp)
-	_, iterations, converged = solve_residuals!(feM.tmp2, feM.m; kwargs...)
-	copyto!(feM.tmp, feM.tmp2)
-	copyto!(r, feM.tmp), iterations, converged
+    # CPU to GPU
+	copyresid!(feM,r) 
+    _, iterations, converged = solve_residuals!(feM.tmp2, feM.m; kwargs...)
+	copyresid!(r,feM) 
+    r, iterations, converged
 end
 
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
-	copyto!(feM.tmp, r)
-	copyto!(feM.tmp2, feM.tmp)
+    copyresid!(feM, r)
 	iterations, converged = _solve_coefficients!(feM.tmp2, feM.m)
 	xs = collect.(feM.m.xs.x)
 	fes = collect.(feM.m.fes)
