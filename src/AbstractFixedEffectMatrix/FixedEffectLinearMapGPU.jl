@@ -94,11 +94,9 @@ function Base.collect(fe::FixedEffect{<: CuVector})
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
 end
 
-# because zeros gives gpu
+# https://github.com/JuliaGPU/CuArrays.jl/issues/306
 cuzeros(T, n::Integer) = fill!(CuVector{T}(undef, n), zero(T))
-# because copyto! is slow without numbers
-copyto!(x::CuVector{Float32}, y::Vector{Float32}) = copyto!(x, 1, y, 1)
-copyto!(x::Vector{Float32}, y::CuVector{Float32}) = copyto!(x, 1, y, 1)
+# https://github.com/JuliaGPU/CuArrays.jl/issues/363
 copyto!(x::CuVector{Float32}, y::CuVector{Float32}) = copyto!(x, 1, y, 1)
 
 ##############################################################################
