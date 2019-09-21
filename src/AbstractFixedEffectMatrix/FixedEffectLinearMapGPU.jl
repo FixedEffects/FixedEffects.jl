@@ -81,9 +81,9 @@ end
 ## Conversion FixedEffect between CPU and GPU
 ##
 ##############################################################################
-function CuArrays.cu(fe::FixedEffect)
+function CuArrays.cu(T, fe::FixedEffect)
 	refs = CuArray(fe.refs)
-	interaction = CuVector{Float32}(fe.interaction)
+	interaction = CuVector{T}(fe.interaction)
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
 end
 
@@ -108,20 +108,20 @@ struct FixedEffectLSMRGPU{T} <: AbstractFixedEffectMatrix{T}
 end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
-	fes = cu.(fes)
+	fes = cu.(Ref(Float32), fes)
 	sqrtw = CuVector{Float32}(sqrtw)
 	n = length(sqrtw)
-	scales = FixedEffectCoefficients([scale!(cuzeros(fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes])
-	caches = [cache!(cuzeros(n), fe.refs, fe.interaction, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
-	xs = FixedEffectCoefficients([cuzeros(fe.n) for fe in fes])
-	v = FixedEffectCoefficients([cuzeros(fe.n) for fe in fes])
-	h = FixedEffectCoefficients([cuzeros(fe.n) for fe in fes])
-	hbar = FixedEffectCoefficients([cuzeros(fe.n) for fe in fes])
-	u = cuzeros(n)
-	FixedEffectLSMRGPU(FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw), Vector{Float32}(undef, n), CuVector{Float32}(undef, n))
+	scales = FixedEffectCoefficients([scale!(cuzeros(Float32, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes])
+	caches = [cache!(cuzeros(Float32, n), fe.refs, fe.interaction, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
+	xs = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes])
+	v = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes])
+	h = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes])
+	hbar = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes])
+	u = cuzeros(Float32, n)
+	FixedEffectLSMRGPU(FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw), zeros(Float32, n), cuzeros(Float32, n))
 end
 # CuArrays.zero does not give CuVector
-cuzeros(n::Integer) = fill!(CuVector{Float32}(undef, n), 0)
+cuzeros(T, n::Integer) = fill!(CuVector{T}(undef, n), zero(T))
 
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
