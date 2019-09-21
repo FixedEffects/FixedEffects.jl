@@ -109,20 +109,19 @@ struct FixedEffectLSMRGPU{T} <: AbstractFixedEffectMatrix{T}
 	fes::Vector{<:FixedEffect}
 end
 
-function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
-	fes_gpu = [cu(Float32, fe) for fe in fes]
-	sqrtw = cu(Float32, sqrtw)
+function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector{T}, ::Type{Val{:lsmr_gpu}}) where {T}
+	fes_gpu = [cu(T, fe) for fe in fes]
+	sqrtw = cu(T, sqrtw)
 	n = length(sqrtw)
-	scales = [scale!(cuzeros(Float32, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes_gpu]
-	caches = [cache!(cuzeros(Float32, n), fe.refs, fe.interaction, scale, sqrtw) for (fe, scale) in zip(fes_gpu, scales)]
-	xs = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes_gpu])
-	v = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes_gpu])
-	h = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes_gpu])
-	hbar = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes_gpu])
-	u = cuzeros(Float32, n)
-	FixedEffectLSMRGPU(FixedEffectLSMR(fes_gpu, scales, caches, xs, v, h, hbar, u, sqrtw), zeros(Float32, n), cuzeros(Float32, n), fes)
+	scales = [scale!(cuzeros(T, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes_gpu]
+	caches = [cache!(cuzeros(T, n), fe.refs, fe.interaction, scale, sqrtw) for (fe, scale) in zip(fes_gpu, scales)]
+	xs = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes_gpu])
+	v = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes_gpu])
+	h = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes_gpu])
+	hbar = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes_gpu])
+	u = cuzeros(T, n)
+	FixedEffectLSMRGPU(FixedEffectLSMR(fes_gpu, scales, caches, xs, v, h, hbar, u, sqrtw), zeros(T, n), cuzeros(T, n), fes)
 end
-
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	copyto!(feM.tmp, r)
@@ -135,8 +134,7 @@ end
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
 	copyto!(feM.tmp, r)
 	copyto!(feM.tmp2, feM.tmp)
-	iterations, converged = _solve_coefficients!(feM.tmp2, feM.m)
-	full(normalize!(collect.(feM.m.xs.x), feM.fes; kwargs...), feM.fes), iterations, converged
+	fecoefs, iterations, converged = _solve_coefficients!(feM.tmp2, feM.m)
+	full(normalize!(collect.(fecoefs.x), feM.fes; kwargs...), feM.fes), iterations, converged
 end
-
 

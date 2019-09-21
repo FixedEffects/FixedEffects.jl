@@ -123,15 +123,15 @@ end
 ##
 ##############################################################################\
 
-function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr}})
+function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector{T}, ::Type{Val{:lsmr}}) where {T}
     n = length(sqrtw)
-    scales = [scale!(zeros(fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes]
-    caches = [cache!(zeros(n), fe.refs, fe.interaction, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
-    xs = FixedEffectCoefficients([zeros(fe.n) for fe in fes])
-    v = FixedEffectCoefficients([zeros(fe.n) for fe in fes])
-    h = FixedEffectCoefficients([zeros(fe.n) for fe in fes])
-    hbar = FixedEffectCoefficients([zeros(fe.n) for fe in fes])
-    u = zeros(n)
+    scales = [scale!(zeros(T, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes]
+    caches = [cache!(zeros(T, n), fe.refs, fe.interaction, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
+    xs = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
+    v = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
+    h = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
+    hbar = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
+    u = zeros(T, n)
     return FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw)
 end
 
@@ -158,8 +158,8 @@ function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
 end
 
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
-	iterations, converged = _solve_coefficients!(r, feM)
-    full(normalize!(feM.xs.x, feM.fes; kwargs...), feM.fes), iterations, converged
+	fecoefs, iterations, converged = _solve_coefficients!(r, feM)
+    full(normalize!(fecoefs.x, feM.fes; kwargs...), feM.fes), iterations, converged
 end
 
 function _solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
@@ -168,5 +168,5 @@ function _solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...
 	for (x, scale) in zip(feM.xs.x, feM.scales)
 	    x .*=  scale
 	end
-	iterations, converged
+	feM.xs, iterations, converged
 end
