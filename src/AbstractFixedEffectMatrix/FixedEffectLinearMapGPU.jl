@@ -82,22 +82,17 @@ end
 ## Conversion FixedEffect between CPU and GPU
 ##
 ##############################################################################
+# https://github.com/JuliaGPU/CuArrays.jl/issues/306
+cuzeros(T::Type, n::Integer) = fill!(CuVector{T}(undef, n), zero(T))
+cuones(T::Type, n::Integer) = fill!(CuVector{T}(undef, n), one(T))
+
 function CuArrays.cu(T::Type, fe::FixedEffect)
 	refs = CuArray(fe.refs)
-	interaction = CuVector{T}(fe.interaction)
+	interaction = cu(T, fe.interaction)
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
 end
-
-function Base.collect(fe::FixedEffect{<: CuVector})
-	refs = collect(fe.refs)
-	interaction = collect(fe.interaction)
-	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
-end
-
-# https://github.com/JuliaGPU/CuArrays.jl/issues/306
-cuzeros(T, n::Integer) = fill!(CuVector{T}(undef, n), zero(T))
-# https://github.com/JuliaGPU/CuArrays.jl/issues/363
-copyto!(x::CuVector{Float32}, y::CuVector{Float32}) = copyto!(x, 1, y, 1)
+CuArrays.cu(T::Type, w::Ones) = cuones(T, length(w))
+CuArrays.cu(T::Type, w::AbstractVector) = CuVector{T}(w)
 
 ##############################################################################
 ##
@@ -111,20 +106,21 @@ struct FixedEffectLSMRGPU{T} <: AbstractFixedEffectMatrix{T}
 	m::FixedEffectLSMR{T}
 	tmp::Vector{T} 	# used to convert Abstract{Float64} to Vector{Float32}
 	tmp2::CuVector{T} # used to convert Vector{Float32} to CuVector{Float32}
+	fes::Vector{<:FixedEffect}
 end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
-	fes = [cu(Float32, fe) for fe in fes]
-	sqrtw = CuVector{Float32}(sqrtw)
+	fes_gpu = [cu(Float32, fe) for fe in fes]
+	sqrtw = cu(Float32, sqrtw)
 	n = length(sqrtw)
-	scales = FixedEffectCoefficients([scale!(cuzeros(Float32, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes])
-	caches = [cache!(cuzeros(Float32, n), fe.refs, fe.interaction, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
-	xs = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes])
-	v = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes])
-	h = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes])
-	hbar = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes])
+	scales = FixedEffectCoefficients([scale!(cuzeros(Float32, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes_gpu])
+	caches = [cache!(cuzeros(Float32, n), fe.refs, fe.interaction, scale, sqrtw) for (fe, scale) in zip(fes_gpu, scales)]
+	xs = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes_gpu])
+	v = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes_gpu])
+	h = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes_gpu])
+	hbar = FixedEffectCoefficients([cuzeros(Float32, fe.n) for fe in fes_gpu])
 	u = cuzeros(Float32, n)
-	FixedEffectLSMRGPU(FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw), zeros(Float32, n), cuzeros(Float32, n))
+	FixedEffectLSMRGPU(FixedEffectLSMR(fes_gpu, scales, caches, xs, v, h, hbar, u, sqrtw), zeros(Float32, n), cuzeros(Float32, n), fes)
 end
 
 
@@ -140,9 +136,8 @@ function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs.
 	copyto!(feM.tmp, r)
 	copyto!(feM.tmp2, feM.tmp)
 	iterations, converged = _solve_coefficients!(feM.tmp2, feM.m)
-	xs = collect.(feM.m.xs.x)
-	fes = collect.(feM.m.fes)
-	full(normalize!(xs, fes; kwargs...), fes), iterations, converged
+	xs = [collect(x) for x in feM.m.xs.x]
+	full(normalize!(xs, feM.fes; kwargs...), feM.fes), iterations, converged
 end
 
 
