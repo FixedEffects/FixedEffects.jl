@@ -126,21 +126,18 @@ end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr}})
     n = length(sqrtw)
-    scales = [_scale!(Vector{Float64}(undef, fe.n), fe, sqrtw) for fe in fes] 
+    scales = [scale(fe, sqrtw) for fe in fes] 
     caches = [_cache!(Vector{Float64}(undef, n), fe, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
-    xs = FixedEffectCoefficients([Vector{Float64}(undef, fe.n) for fe in fes])
-    v = FixedEffectCoefficients([Vector{Float64}(undef, fe.n) for fe in fes])
-    h = FixedEffectCoefficients([Vector{Float64}(undef, fe.n) for fe in fes])
-    hbar = FixedEffectCoefficients([Vector{Float64}(undef, fe.n) for fe in fes])
-    fill!(v, 0.0)
-    fill!(h, 0.0)
-    fill!(hbar, 0.0)
+    xs = FixedEffectCoefficients([zeros(fe.n) for fe in fes])
+    v = FixedEffectCoefficients([zeros(fe.n) for fe in fes])
+    h = FixedEffectCoefficients([zeros(fe.n) for fe in fes])
+    hbar = FixedEffectCoefficients([zeros(fe.n) for fe in fes])
     u = Vector{Float64}(undef, n)
     return FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw)
 end
 
-function _scale!(out, fe::FixedEffect, sqrtw::AbstractVector)
-    fill!(out, 0.0)
+function scale(fe::FixedEffect, sqrtw::AbstractVector)
+    out = zeros(fe.n)
     for i in eachindex(fe.refs)
         out[fe.refs[i]] += abs2(fe.interaction[i] * sqrtw[i])
     end
