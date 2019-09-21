@@ -108,7 +108,7 @@ struct FixedEffectLSMRGPU{T} <: AbstractFixedEffectMatrix{T}
 end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
-	fes = cu.(Ref(Float32), fes)
+	fes = [cu(Float32, fe) for fe in fes]
 	sqrtw = CuVector{Float32}(sqrtw)
 	n = length(sqrtw)
 	scales = FixedEffectCoefficients([scale!(cuzeros(Float32, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes])
