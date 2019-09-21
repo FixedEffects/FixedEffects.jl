@@ -1,6 +1,5 @@
-
-#Adivtype(A, b) = typeof(one(eltype(b))/one(eltype(A)))
 Adivtype(A,b) = Base.promote_op(/, eltype(b), eltype(A))
+
 function zerox(A, b)
     T = Adivtype(A, b)
     x = zeros(T, size(A, 2))
