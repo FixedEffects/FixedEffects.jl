@@ -72,8 +72,8 @@ end
 ##############################################################################
 struct FixedEffectLSMRGPU{T} <: AbstractFixedEffectMatrix{T}
 	m::FixedEffectLSMR{T}
-	tmp::Vector{T} 	# used to convert views, Float64 to Vector{Float32}
-	tmp2::CuVector{T} # used to convert CPU to GPU
+	tmp::Vector{T} 	# used to convert Abstract{Float64} to Vector{Float32}
+	tmp2::CuVector{T} # used to convert Vector{Float32} to CuVector{Float32}
 end
 
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}})
@@ -81,9 +81,9 @@ function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::
 	n = length(sqrtw)
 	tmp = Vector{Float32}(undef, n)
 	caches = [cu(_cache!(tmp, fe, scale, sqrtw)) for (fe, scale) in zip(fes, scales)]
-	scales = cu.(scales)
 	fes = cu.(fes)
 	sqrtw = CuVector{Float32}(sqrtw)
+	scales = cu.(scales)
 	xs = FixedEffectCoefficients([CuVector{Float32}(undef, fe.n) for fe in fes])
 	v = FixedEffectCoefficients([CuVector{Float32}(undef, fe.n) for fe in fes])
 	h = FixedEffectCoefficients([CuVector{Float32}(undef, fe.n) for fe in fes])
