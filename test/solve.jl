@@ -1,6 +1,6 @@
 using Test
 
-using FixedEffects, StatsModels, DataFrames, Random
+using FixedEffects, StatsModels, DataFrames, Random, FillArrays
 
 Random.seed!(789)
 p1 = repeat(1:5, inner = 2)
@@ -48,17 +48,16 @@ end
 if :lsmr_gpu ∈ method_s
     @testset "lsmr_gpu Float32" begin
         method = :lsmr_gpu
-        (c, iter, conv) = solve_coefficients!(copy(x), deepcopy(fes),
-                                              method=method,
-                                              gpufloat=Float32) 
+        (c, iter, conv) = solve_coefficients!(copy(Float32.(x)), deepcopy(fes),
+                                              method=method) 
         @test c ≈ c_lsmr
-	    (r, iter, conv) = solve_residuals!(copy(x),deepcopy(fes),
-                                           method=method, gpufloat=Float32)
+	    (r, iter, conv) = solve_residuals!(copy(Float32.(x)),deepcopy(fes),
+                                           method=method)
         @test r ≈ Float32.(r_ols)
         R = 5
-        (r, iter, conv) = solve_residuals!(repeat(x, outer=[1, R]),
+        (r, iter, conv) = solve_residuals!(repeat(Float32.(x), outer=[1, R]),
                                            deepcopy(fes),
-                                           method=method, gpufloat=Float32)  
+                                           method=method)  
         @test r ≈ repeat(Float32.(r_ols), outer=[1,R])
     end
 end

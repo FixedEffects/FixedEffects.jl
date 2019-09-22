@@ -19,12 +19,14 @@ X = rand(N, 10)
 @show conv_c, conv_g
 
 
-println("CPU, size(x)=$(size(x)), 2 fixed effects")
+println("CPU Float64, size(x)=$(size(x)), 2 fixed effects")
 @btime (r_c, it_c, conv_c)=solve_residuals!($x, [FixedEffect(id1), FixedEffect(id2)], method = :lsmr)
-println("GPU, size(x)=$(size(x)), 2 fixed effects")
+println("CPU Float32, size(x)=$(size(x)), 2 fixed effects")
+@btime (r_c, it_c, conv_c)=solve_residuals!(Float32.(x), [FixedEffect(id1), FixedEffect(id2)], method = :lsmr)
+println("GPU Float64, size(x)=$(size(x)), 2 fixed effects")
 @btime (r_g, it_g, conv_g)=solve_residuals!($x, [FixedEffect(id1), FixedEffect(id2)], method = :lsmr_gpu)
 println("GPU Float32, size(x)=$(size(x)), 2 fixed effects")
-@btime (r_g, it_g, conv_g)=solve_residuals!($x, [FixedEffect(id1), FixedEffect(id2)], method = :lsmr_gpu,gpufloat=Float32, tol=sqrt(eps(Float32)))
+@btime (r_g, it_g, conv_g)=solve_residuals!(Float32.(x), [FixedEffect(id1), FixedEffect(id2)], method = :lsmr_gpu)
 
 
 # Note that most of the GPU time is spend transferring memory 
@@ -51,8 +53,12 @@ K = 1
 e = randn(length(x), K)
 X = repeat(x, outer=[1,K]) + e
 
-println("CPU")
-@time (rc,i,c)=solve_residuals!(copy(X), [FixedEffect(pid), FixedEffect(fid)],
+println("CPU Float64")
+@time (rc6,i,c)=solve_residuals!(copy(X), [FixedEffect(pid), FixedEffect(fid)],
+                                tol=sqrt(eps(Float32)))
+@show i
+println("CPU Float32")
+@time (rc3,i,c)=solve_residuals!(Float32.(X), [FixedEffect(pid), FixedEffect(fid)],
                                 tol=sqrt(eps(Float32)))
 @show i
 
@@ -63,8 +69,8 @@ println("GPU Float64")
 @show i
 
 println("GPU Float32")
-@time (rg3,i,c)=solve_residuals!(copy(X), [FixedEffect(pid), FixedEffect(fid)],
-                                 method = :lsmr_gpu, gpufloat=Float32,
+@time (rg3,i,c)=solve_residuals!(Float32.(X), [FixedEffect(pid), FixedEffect(fid)],
+                                 method = :lsmr_gpu, 
                                  tol=sqrt(eps(Float32)));
 @show i
 @show mean(rg3)

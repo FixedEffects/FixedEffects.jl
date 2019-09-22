@@ -5,43 +5,41 @@
 ## We define these methods used in lsmr! (duck typing): 
 ## copyto!, fill!, rmul!, axpy!, norm
 ##
+## Do not define iteration on each fixedeffect since it would conflict with eltype
+##
 ##############################################################################
 
-struct FixedEffectCoefficients{T} <: AbstractVector{T}
+struct FixedEffectCoefficients{T}
     x::Vector{<:AbstractVector{T}}
 end
 
-Base.iterate(xs::FixedEffectCoefficients) = iterate(xs.x)
-Base.iterate(xs::FixedEffectCoefficients, state) = iterate(xs.x, state)
-
-
-eltype(xs::FixedEffectCoefficients) = eltype(eltype(xs.x))
-length(xs::FixedEffectCoefficients) = sum(length(x) for x in xs)
-norm(xs::FixedEffectCoefficients) = sqrt(sum(sum(abs2, x) for x in xs))
+eltype(xs::FixedEffectCoefficients{T}) where {T} = T
+length(xs::FixedEffectCoefficients) = sum(length(x) for x in xs.x)
+norm(xs::FixedEffectCoefficients) = sqrt(sum(sum(abs2, x) for x in xs.x))
 
 function fill!(xs::FixedEffectCoefficients, α::Number)
-    for x in xs
+    for x in xs.x
         fill!(x, α)
     end
     return xs
 end
 
 function rmul!(xs::FixedEffectCoefficients, α::Number)
-    for x in xs
+    for x in xs.x
         rmul!(x, α)
     end
     return xs
 end
 
 function copyto!(xs1::FixedEffectCoefficients, xs2::FixedEffectCoefficients)
-    for (x1, x2) in zip(xs1, xs2)
+    for (x1, x2) in zip(xs1.x, xs2.x)
         copyto!(x1, x2)
     end
     return xs1
 end
 
 function axpy!(α::Number, xs1::FixedEffectCoefficients, xs2::FixedEffectCoefficients)
-    for (x1, x2) in zip(xs1, xs2)
+    for (x1, x2) in zip(xs1.x, xs2.x)
         axpy!(α, x1, x2)
     end
     return xs2
@@ -81,7 +79,7 @@ end
 function mul!(y::AbstractVector, fem::FixedEffectLSMR, 
               fecoefs::FixedEffectCoefficients, α::Number, β::Number)
     rmul!(y, β)
-    for (fecoef, fe, cache) in zip(fecoefs, fem.fes, fem.caches)
+    for (fecoef, fe, cache) in zip(fecoefs.x, fem.fes, fem.caches)
         demean!(y, fecoef, fe.refs, α, cache)
     end
     return y
@@ -98,7 +96,7 @@ function mul!(fecoefs::FixedEffectCoefficients, Cfem::Adjoint{T, FixedEffectLSMR
                 y::AbstractVector, α::Number, β::Number) where {T}
     fem = adjoint(Cfem)
     rmul!(fecoefs, β)
-    for (fecoef, fe, cache) in zip(fecoefs, fem.fes, fem.caches)
+    for (fecoef, fe, cache) in zip(fecoefs.x, fem.fes, fem.caches)
         mean!(fecoef, fe.refs, y, α, cache)
     end
     return fecoefs
@@ -127,37 +125,30 @@ end
 ##
 ##############################################################################\
 
-function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr}})
+function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector{T}, ::Type{Val{:lsmr}}) where {T}
     n = length(sqrtw)
-    scales = [_scale!(Vector{Float64}(undef, fe.n), fe, sqrtw) for fe in fes] 
-    caches = [_cache!(Vector{Float64}(undef, n), fe, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
-    xs = FixedEffectCoefficients([Vector{Float64}(undef, fe.n) for fe in fes])
-    v = FixedEffectCoefficients([Vector{Float64}(undef, fe.n) for fe in fes])
-    h = FixedEffectCoefficients([Vector{Float64}(undef, fe.n) for fe in fes])
-    hbar = FixedEffectCoefficients([Vector{Float64}(undef, fe.n) for fe in fes])
-    fill!(v, 0.0)
-    fill!(h, 0.0)
-    fill!(hbar, 0.0)
-    u = Vector{Float64}(undef, n)
+    scales = [scale!(zeros(T, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes]
+    caches = [cache!(zeros(T, n), fe.refs, fe.interaction, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
+    xs = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
+    v = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
+    h = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
+    hbar = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
+    u = zeros(T, n)
     return FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw)
 end
 
-function _scale!(out, fe::FixedEffect, sqrtw::AbstractVector)
-    fill!(out, 0.0)
-    for i in eachindex(fe.refs)
-        out[fe.refs[i]] += abs2(fe.interaction[i] * sqrtw[i])
+function scale!(fecoef::AbstractVector, refs::AbstractVector, interaction::AbstractVector, sqrtw::AbstractVector)
+    @inbounds @simd for i in eachindex(refs)
+        fecoef[refs[i]] += abs2(interaction[i] * sqrtw[i])
     end
-    for i in eachindex(out)
-        out[i] = out[i] > 0.0 ? (1.0 / sqrt(out[i])) : 0.0
-    end
-    return out
+    fecoef .= 1.0 ./ sqrt.(fecoef)
 end
 
-function _cache!(out, fe::FixedEffect, scale::AbstractVector, sqrtw::AbstractVector)
-    @inbounds @simd for i in eachindex(out)
-        out[i] = scale[fe.refs[i]] * fe.interaction[i] * sqrtw[i]
+function cache!(y::AbstractVector, refs::AbstractVector, interaction::AbstractVector, fecoef::AbstractVector, sqrtw::AbstractVector)
+    @inbounds @simd for i in eachindex(y)
+        y[i] = fecoef[refs[i]] * interaction[i] * sqrtw[i]
     end
-    return out
+    return y
 end
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
@@ -172,15 +163,15 @@ function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
 end
 
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
-	iterations, converged = _solve_coefficients!(r, feM)
-    full(normalize!(feM.xs.x, feM.fes; kwargs...), feM.fes), iterations, converged
+	fecoefs, iterations, converged = _solve_coefficients!(r, feM)
+    full(normalize!(fecoefs.x, feM.fes; kwargs...), feM.fes), iterations, converged
 end
 
 function _solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
 	r .*= feM.sqrtw
 	iterations, converged = solve!(feM, r; kwargs...)
-	for (x, scale) in zip(feM.xs, feM.scales)
+	for (x, scale) in zip(feM.xs.x, feM.scales)
 	    x .*=  scale
 	end
-	iterations, converged
+	feM.xs, iterations, converged
 end
