@@ -43,6 +43,9 @@ include("AbstractFixedEffectMatrix/FixedEffectLinearMap.jl")
 include("AbstractFixedEffectMatrix/FixedEffectLinearMapParallel.jl")
 Base.USE_GPL_LIBS && include("AbstractFixedEffectMatrix/FixedEffectCSC.jl")
 
+## @require within __init___ breaks Revise.jl
+#using CuArrays  
+#include("AbstractFixedEffectMatrix/FixedEffectLinearMapGPU.jl")
 
 function __init__()
 	@require CuArrays = "3a865a2d-5b23-5a0f-bc46-62713ec82fae" include("AbstractFixedEffectMatrix/FixedEffectLinearMapGPU.jl")

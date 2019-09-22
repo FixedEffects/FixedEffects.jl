@@ -9,6 +9,8 @@ import .CuArrays: allowscalar
 
 allowscalar(false)
 
+#const FloatType = Float64
+const defaultThreads = 256
 ##############################################################################
 ##
 ## Implement special mean! and deman! (code by Paul Schrimpf)
@@ -16,9 +18,9 @@ allowscalar(false)
 ##############################################################################
 
 function mean!(fecoef::CuVector, refs::CuVector, y::CuVector, α::Number, cache::CuVector)
-    nthreads = 256
-    nblocks = div(length(y), nthreads) + 1
-    @cuda threads=nthreads blocks=nblocks mean_kernel!(fecoef, refs, y, α, cache)
+    nthreads = defaultThreads
+    nblocks = cld(length(y), nthreads) 
+    @cuda threads=nthreads blocks=nblocks mean_kernel!(fecoef, refs, y, α, cache)    
 end
 
 function mean_kernel!(fecoef, refs, y, α, cache)
@@ -31,8 +33,8 @@ function mean_kernel!(fecoef, refs, y, α, cache)
 end
 
 function demean!(y::CuVector, fecoef::CuVector, refs::CuVector, α::Number, cache::CuVector)
-    nthreads = 256
-    nblocks = div(length(y), nthreads) + 1
+    nthreads = defaultThreads
+    nblocks = cld(length(y), nthreads)
     @cuda threads=nthreads blocks=nblocks demean_kernel!(y, fecoef, refs, α, cache)
 end
 
@@ -46,10 +48,10 @@ function demean_kernel!(y, fecoef, refs, α, cache)
 end
 
 function scale!(fecoef::CuVector, refs::CuVector, y::CuVector, sqrtw::CuVector)
-	nthreads = 256
-	nblocks = div(length(y), nthreads) + 1
+    nthreads = defaultThreads
+    nblocks = cld(length(refs), nthreads) 
 	@cuda threads=nthreads blocks=nblocks scale_kernel!(fecoef, refs, y, sqrtw)
-	fecoef .= 1.0 ./ sqrt.(fecoef)
+	fecoef .= one(eltype(fecoef)) ./ sqrt.(fecoef)
 end
 
 function scale_kernel!(fecoef, refs, y, sqrtw)
@@ -62,8 +64,8 @@ function scale_kernel!(fecoef, refs, y, sqrtw)
 end
 
 function cache!(y::CuVector, refs::CuVector, interaction::CuVector, fecoef::CuVector, sqrtw::CuVector)
-	nthreads = 256
-	nblocks = div(length(y), nthreads) + 1
+    nthreads = defaultThreads
+    nblocks = cld(length(y), nthreads) 
 	@cuda threads=nthreads blocks=nblocks cache_kernel!(y, refs, interaction, fecoef, sqrtw)
 	return y
 end
@@ -82,6 +84,18 @@ end
 ## Conversion FixedEffect between CPU and GPU
 ##
 ##############################################################################
+
+# function Base.collect(fe::FixedEffect{<: CuVector})
+# 	refs = collect(fe.refs)
+#     if all(fe.interaction .≈ 1)
+#         # The check for no interaction in normalize! requires isa(Ones, interaction)
+#         interaction = Ones{Float64}(length(refs))
+#     else
+# 	    interaction = collect(fe.interaction)
+#     end
+# end
+
+
 # https://github.com/JuliaGPU/CuArrays.jl/issues/306
 cuzeros(T::Type, n::Integer) = fill!(CuVector{T}(undef, n), zero(T))
 cuones(T::Type, n::Integer) = fill!(CuVector{T}(undef, n), one(T))
@@ -89,7 +103,7 @@ cuones(T::Type, n::Integer) = fill!(CuVector{T}(undef, n), one(T))
 function CuArrays.cu(T::Type, fe::FixedEffect)
 	refs = CuArray(fe.refs)
 	interaction = cu(T, fe.interaction)
-	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
+    FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
 end
 CuArrays.cu(T::Type, w::Ones) = cuones(T, length(w))
 CuArrays.cu(T::Type, w::AbstractVector) = CuVector{T}(w)
@@ -108,7 +122,7 @@ struct FixedEffectLSMRGPU{T} <: AbstractFixedEffectMatrix{T}
 	tmp2::CuVector{T} # used to convert Vector{Float32} to CuVector{Float32}
 	fes::Vector{<:FixedEffect}
 end
-
+    
 function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector{T}, ::Type{Val{:lsmr_gpu}}) where {T}
 	fes_gpu = [cu(T, fe) for fe in fes]
 	sqrtw = cu(T, sqrtw)
@@ -123,18 +137,28 @@ function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector{T},
 	FixedEffectLSMRGPU(FixedEffectLSMR(fes_gpu, scales, caches, xs, v, h, hbar, u, sqrtw), zeros(T, n), cuzeros(T, n), fes)
 end
 
+function copyresid!(r::AbstractVector, feM::FixedEffectLSMRGPU)
+    copyto!(feM.tmp, feM.tmp2)
+    copyto!(r, feM.tmp)
+end
+
+
+function copyresid!(feM::FixedEffectLSMRGPU, r::AbstractVector)
+    copyto!(feM.tmp, r)
+    copyto!(feM.tmp2, feM.tmp)   
+end
+
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
-	copyto!(feM.tmp, r)
-	copyto!(feM.tmp2, feM.tmp)
-	x, iterations, converged = solve_residuals!(feM.tmp2, feM.m; kwargs...)
-	copyto!(feM.tmp, x)
-	copyto!(r, feM.tmp), iterations, converged
+	copyresid!(feM,r) 
+    _, iterations, converged = solve_residuals!(feM.tmp2, feM.m; kwargs...)
+	copyresid!(r,feM) 
+    r, iterations, converged
 end
 
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; kwargs...)
-	copyto!(feM.tmp, r)
-	copyto!(feM.tmp2, feM.tmp)
+    copyresid!(feM, r)
 	fecoefs, iterations, converged = _solve_coefficients!(feM.tmp2, feM.m)
-	full(normalize!(collect.(fecoefs.x), feM.fes; kwargs...), feM.fes), iterations, converged
+    (full(normalize!(collect.(fecoefs.x), feM.fes; kwargs...), feM.fes),
+     iterations, converged)
 end
 

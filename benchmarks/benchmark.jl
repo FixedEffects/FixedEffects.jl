@@ -18,8 +18,6 @@ X = [x x x x x x x x x x]
 @time solve_residuals!(X, [FixedEffect(id1), FixedEffect(id2)], method = :lsmr_threads)
 # 5.110589 seconds (702.36 k allocations: 1.071 GiB, 7.72% gc time)
 
-
-
 # More complicated problem
 N = 8000000 # number of observations
 M = 4000000 # number of workers

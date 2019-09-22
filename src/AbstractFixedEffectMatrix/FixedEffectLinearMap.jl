@@ -57,6 +57,7 @@ end
 ##
 ##############################################################################
 
+
 struct FixedEffectLSMR{T} <: AbstractFixedEffectMatrix{T}
     fes::Vector{<:FixedEffect}
     scales::Vector{<:AbstractVector}
@@ -76,7 +77,7 @@ function size(fem::FixedEffectLSMR, dim::Integer)
 end
 
 function mul!(y::AbstractVector, fem::FixedEffectLSMR, 
-                fecoefs::FixedEffectCoefficients, α::Number, β::Number)
+              fecoefs::FixedEffectCoefficients, α::Number, β::Number)
     rmul!(y, β)
     for (fecoef, fe, cache) in zip(fecoefs.x, fem.fes, fem.caches)
         demean!(y, fecoef, fe.refs, α, cache)
@@ -85,10 +86,10 @@ function mul!(y::AbstractVector, fem::FixedEffectLSMR,
 end
 
 function demean!(y::AbstractVector, fecoef::AbstractVector, refs::AbstractVector, 
-                α::Number, cache::AbstractVector)
-    @simd ivdep for i in eachindex(y)
-        @inbounds y[i] += fecoef[refs[i]] * α * cache[i]
-    end
+                 α::Number, cache::AbstractVector)
+  @simd ivdep for i in eachindex(y)
+    @inbounds y[i] += fecoef[refs[i]] * α * cache[i]
+  end
 end
 
 function mul!(fecoefs::FixedEffectCoefficients, Cfem::Adjoint{T, FixedEffectLSMR{T}},
@@ -102,20 +103,21 @@ function mul!(fecoefs::FixedEffectCoefficients, Cfem::Adjoint{T, FixedEffectLSMR
 end
 
 function mean!(fecoef::AbstractVector, refs::AbstractVector, y::AbstractVector, 
-        α::Number, cache::AbstractVector)
-   @simd ivdep for i in eachindex(y)
+               α::Number, cache::AbstractVector)
+    @simd ivdep for i in eachindex(y)
         @inbounds fecoef[refs[i]] += y[i] * α * cache[i]
     end
 end
 
 function solve!(feM::FixedEffectLSMR, r::AbstractVector; 
-    tol::Real = 1e-8, maxiter::Integer = 100_000)
+                tol::Real = 1e-8, maxiter::Integer = 100_000)
     fill!(feM.xs, 0.0)
     copyto!(feM.u, r)
     x, ch = lsmr!(feM.xs, feM, feM.u, feM.v, feM.h, feM.hbar; 
-        atol = tol, btol = tol, conlim = 1e8, maxiter = maxiter)
+                  atol = tol, btol = tol, conlim = 1e8, maxiter = maxiter)
     return div(ch.mvps, 2), ch.isconverged
 end
+
 
 ##############################################################################
 ##
@@ -150,10 +152,13 @@ function cache!(y::AbstractVector, refs::AbstractVector, interaction::AbstractVe
 end
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
-    r .*= feM.sqrtw
+    #start = time()
+    r .*= feM.sqrtw   
     iterations, converged = solve!(feM, r; kwargs...)
     mul!(r, feM, feM.xs, -1.0, 1.0)
     r ./=  feM.sqrtw
+    #finish = time()
+    #println("solve! took $(finish-start) seconds")
     return r, iterations, converged
 end
 
