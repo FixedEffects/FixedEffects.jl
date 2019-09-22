@@ -67,6 +67,7 @@ struct FixedEffectLSMR{T} <: AbstractFixedEffectMatrix{T}
     h::FixedEffectCoefficients{T}
     hbar::FixedEffectCoefficients{T}
     u::AbstractVector{T}
+    r::AbstractVector{T}
     sqrtw::AbstractVector{T}
 end
 
@@ -87,9 +88,9 @@ end
 
 function demean!(y::AbstractVector, fecoef::AbstractVector, refs::AbstractVector, 
                  α::Number, cache::AbstractVector)
-  @simd ivdep for i in eachindex(y)
-    @inbounds y[i] += fecoef[refs[i]] * α * cache[i]
-  end
+    @simd ivdep for i in eachindex(y)
+        @inbounds y[i] += fecoef[refs[i]] * α * cache[i]
+    end
 end
 
 function mul!(fecoefs::FixedEffectCoefficients, Cfem::Adjoint{T, FixedEffectLSMR{T}},
@@ -125,7 +126,8 @@ end
 ##
 ##############################################################################\
 
-function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector{T}, ::Type{Val{:lsmr}}) where {T}
+function AbstractFixedEffectMatrix{T}(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr}}) where {T}
+    sqrtw = convert(AbstractVector{T}, sqrtw)
     n = length(sqrtw)
     scales = [scale!(zeros(T, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes]
     caches = [cache!(zeros(T, n), fe.refs, fe.interaction, scale, sqrtw) for (fe, scale) in zip(fes, scales)]
@@ -134,14 +136,15 @@ function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector{T},
     h = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
     hbar = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
     u = zeros(T, n)
-    return FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, sqrtw)
+    r = zeros(T, n)
+    return FixedEffectLSMR(fes, scales, caches, xs, v, h, hbar, u, r, sqrtw)
 end
 
 function scale!(fecoef::AbstractVector, refs::AbstractVector, interaction::AbstractVector, sqrtw::AbstractVector)
     @inbounds @simd for i in eachindex(refs)
         fecoef[refs[i]] += abs2(interaction[i] * sqrtw[i])
     end
-    fecoef .= 1.0 ./ sqrt.(fecoef)
+    fecoef .= 1 ./ sqrt.(fecoef)
 end
 
 function cache!(y::AbstractVector, refs::AbstractVector, interaction::AbstractVector, fecoef::AbstractVector, sqrtw::AbstractVector)
@@ -152,24 +155,25 @@ function cache!(y::AbstractVector, refs::AbstractVector, interaction::AbstractVe
 end
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
-    #start = time()
-    r .*= feM.sqrtw   
-    iterations, converged = solve!(feM, r; kwargs...)
-    mul!(r, feM, feM.xs, -1.0, 1.0)
-    r ./=  feM.sqrtw
-    #finish = time()
-    #println("solve! took $(finish-start) seconds")
+    copyto!(feM.r, r)
+    feM.r .*= feM.sqrtw   
+    iterations, converged = solve!(feM, feM.r; kwargs...)
+    mul!(feM.r, feM, feM.xs, -1.0, 1.0)
+    feM.r ./=  feM.sqrtw
+    copyto!(r, feM.r)
     return r, iterations, converged
 end
 
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
-	fecoefs, iterations, converged = _solve_coefficients!(r, feM)
-    full(normalize!(fecoefs.x, feM.fes; kwargs...), feM.fes), iterations, converged
+	xs, iterations, converged = _solve_coefficients!(r, feM)
+    xs = Vector{eltype(r)}[x for x in xs.x]
+    full(normalize!(xs, feM.fes; kwargs...), feM.fes), iterations, converged
 end
 
 function _solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMR; kwargs...)
-	r .*= feM.sqrtw
-	iterations, converged = solve!(feM, r; kwargs...)
+    copyto!(feM.r, r)
+	feM.r .*= feM.sqrtw
+	iterations, converged = solve!(feM, feM.r; kwargs...)
 	for (x, scale) in zip(feM.xs.x, feM.scales)
 	    x .*=  scale
 	end

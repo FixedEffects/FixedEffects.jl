@@ -26,7 +26,7 @@ using Requires
 export 
 group,
 FixedEffect,
-FixedEffectMatrix,
+AbstractFixedEffectMatrix,
 solve_residuals!,
 solve_coefficients!
 
@@ -41,11 +41,9 @@ include("FixedEffect.jl")
 include("solve.jl")
 include("AbstractFixedEffectMatrix/FixedEffectLinearMap.jl")
 include("AbstractFixedEffectMatrix/FixedEffectLinearMapParallel.jl")
-Base.USE_GPL_LIBS && include("AbstractFixedEffectMatrix/FixedEffectCSC.jl")
-
-## @require within __init___ breaks Revise.jl
-#using CuArrays  
-#include("AbstractFixedEffectMatrix/FixedEffectLinearMapGPU.jl")
+if Base.USE_GPL_LIBS
+	include("AbstractFixedEffectMatrix/FixedEffectCSC.jl")
+end
 
 function __init__()
 	@require CuArrays = "3a865a2d-5b23-5a0f-bc46-62713ec82fae" include("AbstractFixedEffectMatrix/FixedEffectLinearMapGPU.jl")

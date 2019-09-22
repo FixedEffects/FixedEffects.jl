@@ -16,7 +16,7 @@ X = [x x x x x x x x x x]
 # 2.659090 seconds (2.63 k allocations: 235.155 MiB)
 X = [x x x x x x x x x x]
 @time solve_residuals!(X, [FixedEffect(id1), FixedEffect(id2)], method = :lsmr_threads)
-# 5.110589 seconds (702.36 k allocations: 1.071 GiB, 7.72% gc time)
+#   3.196603 seconds (3.59 k allocations: 2.944 GiB, 20.59% gc time)
 
 # More complicated problem
 N = 8000000 # number of observations
@@ -32,7 +32,6 @@ x = (pid .* fid .- mean(pid .* fid)) / std(pid .* fid)
 pid = categorical(pid)
 fid = categorical(fid)
 @time solve_residuals!([x x x x], [FixedEffect(pid), FixedEffect(fid)])
-
-
+#  10.279242 seconds (111.29 k allocations: 646.161 MiB)
 @time solve_residuals!([x x x x], [FixedEffect(pid), FixedEffect(fid)], method = :lsmr_threads)
-
+#   8.467858 seconds (8.50 k allocations: 1.784 GiB)

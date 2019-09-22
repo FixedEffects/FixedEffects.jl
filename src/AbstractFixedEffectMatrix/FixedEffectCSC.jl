@@ -5,13 +5,13 @@
 ##############################################################################
 
 # construct the sparse matrix of fixed effects A in  A'Ax = A'r
-function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector,  ::Type{Val{:CSC}})
+function AbstractFixedEffectMatrix{T}(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector,  ::Type{Val{:CSC}}) where {T}
     # construct model matrix A constituted by fixed effects
     nobs = length(fes[1].refs)
     N = length(fes) * nobs
     I = zeros(Int, N)
     J = similar(I)
-    V = zeros(Float64, N)
+    V = zeros(T, N)
     start = 0
     idx = 0
     for fe in fes
@@ -32,19 +32,20 @@ end
 ##
 ##############################################################################
 
-struct FixedEffectCholesky{T, V, N, Tw} <: AbstractFixedEffectMatrix{V}
+struct FixedEffectCholesky{CholT, T, N, Tw} <: AbstractFixedEffectMatrix{T}
     fes::Vector{<:FixedEffect}
-    m::SparseMatrixCSC{V, N}
-    cholm::T
-    x::Vector{V}
+    m::SparseMatrixCSC{T, N}
+    cholm::CholT
+    x::Vector{T}
+    r::Vector{T}
     sqrtw::Tw
 end
 
-function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:cholesky}})
-    m = FixedEffectMatrix(fes, sqrtw, Val{:CSC})
+function AbstractFixedEffectMatrix{T}(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:cholesky}}) where {T}
+    m = AbstractFixedEffectMatrix{T}(fes, sqrtw, Val{:CSC})
     cholm = cholesky(Symmetric(m' * m))
     total_len = sum(length(unique(fe.refs)) for fe in fes)
-    FixedEffectCholesky(fes, m, cholm, zeros(total_len), sqrtw)
+    FixedEffectCholesky(fes, m, cholm, zeros(T, total_len), zeros(T, length(sqrtw)), sqrtw)
 end
 
 function solve!(feM::FixedEffectCholesky, r::AbstractVector; kwargs...)
@@ -57,25 +58,23 @@ end
 ##
 ##############################################################################
 
-struct FixedEffectQR{T, V, N, Tw} <: AbstractFixedEffectMatrix{V}
+struct FixedEffectQR{QRT, T, N, Tw} <: AbstractFixedEffectMatrix{T}
     fes::Vector{<:FixedEffect}
-    m::SparseMatrixCSC{V, N}
-    qrm::T
-    b::Vector{V}
+    m::SparseMatrixCSC{T, N}
+    qrm::QRT
+    r::Vector{T}
     sqrtw::Tw
 end
 
-function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:qr}})
-    m = FixedEffectMatrix(fes, sqrtw, Val{:CSC})
+function AbstractFixedEffectMatrix{T}(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:qr}}) where {T}
+    m = AbstractFixedEffectMatrix{T}(fes, sqrtw, Val{:CSC})
     qrm = qr(m)
-    b = zeros(length(fes[1].refs))
-    FixedEffectQR(fes, m, qrm, b, sqrtw)
+    r = zeros(T, length(sqrtw))
+    FixedEffectQR(fes, m, qrm, r, sqrtw)
 end
 
 function solve!(feM::FixedEffectQR, r::AbstractVector ; kwargs...) 
-    # since \ needs a vector
-    copyto!(feM.b, r)
-    feM.qrm \ feM.b
+    feM.qrm \ r
 end
 
 
@@ -87,10 +86,12 @@ end
 
 # updates r as the residual of the projection of r on A
 function solve_residuals!(r::AbstractVector, feM::Union{FixedEffectCholesky, FixedEffectQR}; kwargs...)
-    r .= r .* feM.sqrtw
-    x = solve!(feM, r; kwargs...)
-    mul!(r, feM.m, x, -1.0, 1.0)
-    r .= r./ feM.sqrtw
+    copyto!(feM.r, r)
+    feM.r .*= feM.sqrtw
+    x = solve!(feM, feM.r; kwargs...)
+    mul!(feM.r, feM.m, x, -1.0, 1.0)
+    feM.r ./= feM.sqrtw
+    copyto!(r, feM.r)
     return r, 1, true
 end
 
@@ -98,13 +99,14 @@ end
 # transform x from Vector (stacked vector of coefficients) 
 # to Vector{Vector} (vector of coefficients for each categorical variable)
 function solve_coefficients!(r::AbstractVector, feM::Union{FixedEffectCholesky, FixedEffectQR}; kwargs...)
-    r .= r .* feM.sqrtw
-    x = solve!(feM, r; kwargs...)
+    copyto!(feM.r, r)
+    feM.r .*= feM.sqrtw
+    x = solve!(feM, feM.r; kwargs...)
     out = Vector{eltype(r)}[]
     iend = 0
     for fe in feM.fes
         istart = iend + 1
-        iend = istart + length(unique(fe.refs)) - 1
+        iend = istart + length(Set(fe.refs)) - 1
         push!(out, x[istart:iend])
     end
     full(normalize!(out, feM.fes; kwargs...), feM.fes), 1, true

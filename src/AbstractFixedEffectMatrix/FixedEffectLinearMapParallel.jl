@@ -11,13 +11,13 @@ struct FixedEffectLSMRParallel{T} <: AbstractFixedEffectMatrix{T}
     sqrtw::AbstractVector{T}
 end
 
-function FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, 
-                ::Type{Val{:lsmr_parallel}})
-    FixedEffectLSMRParallel(fes, sqrtw)
+function AbstractFixedEffectMatrix{T}(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, 
+                ::Type{Val{:lsmr_parallel}}) where {T}
+    FixedEffectLSMRParallel{T}(fes, sqrtw)
 end
 
-function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRParallel; kwargs...)
-    solve_residuals!(r, FixedEffectMatrix(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
+function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRParallel{T}; kwargs...) where {T}
+    solve_residuals!(r, AbstractFixedEffectMatrix{T}(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
 end
 
 function solve_residuals!(X::AbstractMatrix, feM::FixedEffectLSMRParallel; kwargs...)
@@ -32,11 +32,9 @@ function solve_residuals!(X::AbstractMatrix, feM::FixedEffectLSMRParallel; kwarg
     return X, iterations, convergeds
 end
 
-function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRParallel, ; kwargs...)
-    solve_coefficients!(r, FixedEffectMatrix(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
+function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRParallel{T}, ; kwargs...) where {T}
+    solve_coefficients!(r, AbstractFixedEffectMatrix{T}(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
 end
-
-
 
 ##############################################################################
 ##
@@ -48,26 +46,28 @@ end
 
 struct FixedEffectLSMRThreads{T} <: AbstractFixedEffectMatrix{T}
     fes::Vector{<:FixedEffect}
-    sqrtw::AbstractVector{T}
+    sqrtw::AbstractVector
 end
 
-FixedEffectMatrix(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_threads}}) = FixedEffectLSMRThreads(fes, sqrtw)
+function AbstractFixedEffectMatrix{T}(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_threads}}) where {T}
+    FixedEffectLSMRThreads{T}(fes, sqrtw)
+end
 
-function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRThreads; kwargs...)
-    solve_residuals!(r, FixedEffectMatrix(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
+function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRThreads{T}; kwargs...) where {T}
+    solve_residuals!(r, AbstractFixedEffectMatrix{T}(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
 end
 
 function solve_residuals!(X::AbstractMatrix, feM::FixedEffectLSMRThreads; kwargs...)
    iterations = zeros(Int, size(X, 2))
    convergeds = zeros(Bool, size(X, 2))
    Threads.@threads for j in 1:size(X, 2)
-        X[:, j], iteration, converged = solve_residuals!(X[:, j], feM; kwargs...)
+        _, iteration, converged = solve_residuals!(view(X, :, j), feM; kwargs...)
         iterations[j] = iteration
         convergeds[j] = converged
    end
    return X, iterations, convergeds
 end
 
-function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRThreads; kwargs...)
-    solve_coefficients!(r, FixedEffectMatrix(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
+function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRThreads{T}; kwargs...) where {T}
+    solve_coefficients!(r, AbstractFixedEffectMatrix{T}(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
 end

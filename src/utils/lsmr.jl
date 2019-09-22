@@ -48,8 +48,8 @@ end
 
 
 ## Arguments:
-## x is initial x0. Transformed in place to the solution.
-## b equals initial b. Transformed in place
+## x is initial guess for x0. Transformed in place to the solution.
+## b is also transformed in place
 ## v, h, hbar are storage arrays of length size(A, 2)
 function lsmr!(x, A, b, v, h, hbar; 
     atol::Number = 1e-6, btol::Number = 1e-6, conlim::Number = 1e8, 
