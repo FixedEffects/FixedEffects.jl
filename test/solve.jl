@@ -1,9 +1,6 @@
 using Test, FixedEffects
 
 method_s = [:lsmr, :lsmr_threads, :lsmr_parallel]
-if Base.USE_GPL_LIBS
-	push!(method_s, :cholesky, :qr)
-end
 try 
     using CuArrays
     push!(method_s, :lsmr_gpu)

@@ -41,6 +41,7 @@ end
 ## LSMR MultiThreaded
 ##
 ## One needs to construct a new fe matrix / fe vectirs for each LHS/RHS
+## This is because each thread need to have its own cache / u / w, etc
 ##
 ##############################################################################
 
