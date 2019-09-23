@@ -1,7 +1,7 @@
 using Test, FixedEffects
 
 method_s = [:lsmr, :lsmr_threads, :lsmr_parallel]
-if isdefined(FixedEffects, :FixedEffectMatrixGPU)
+if isdefined(FixedEffects, :FixedEffectLSMRGPU)
 	push!(method_s, :lsmr_gpu)
 end
 
