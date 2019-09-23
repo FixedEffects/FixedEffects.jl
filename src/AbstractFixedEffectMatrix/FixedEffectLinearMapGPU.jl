@@ -3,9 +3,8 @@
 ## LSMR GPU
 ##
 ##############################################################################
-using .CuArrays
-using .CuArrays.CUDAnative
-import .CuArrays: allowscalar
+using CuArrays.CUDAnative
+import CuArrays: allowscalar
 allowscalar(false)
 
 ##############################################################################

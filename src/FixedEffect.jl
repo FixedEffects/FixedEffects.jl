@@ -11,7 +11,7 @@ struct FixedEffect{R <: AbstractVector{<:Integer}, I <: AbstractVector{<: Real}}
     interaction::I          # the continuous interaction
     n::Int                  # Number of potential values (= maximum(refs))
     function FixedEffect{R, I}(refs, interaction, n) where {R <: AbstractVector{<:Integer}, I <: AbstractVector{<: Real}}
-        maximum(refs) > n && error("Categorical Vector used to construct Fixed Effect is malformed. Some elements of refs do not refer to pool")
+        isa(refs, Vector) && maximum(refs) > n && error("Categorical Vector used to construct Fixed Effect is malformed. Some elements of refs do not refer to pool")
         new(refs, interaction, n)
     end
 end

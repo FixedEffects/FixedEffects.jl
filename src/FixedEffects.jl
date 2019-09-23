@@ -12,8 +12,18 @@ import Distributed: pmap
 import CategoricalArrays: CategoricalArray, CategoricalVector, compress, categorical, CategoricalPool, levels, droplevels!
 using FillArrays
 using Reexport
-using Requires
-
+using CUDAapi
+if has_cuda()
+	try
+		using CuArrays
+		@eval has_cuarrays() = true
+	catch
+		@info "CUDA is installed, but CuArrays.jl fails to load"
+		@eval has_cuarrays() = false
+	end
+else
+	has_cuarrays() = false
+end
 @reexport using StatsBase # used for Weights
 ##############################################################################
 ##
@@ -40,8 +50,8 @@ include("solve.jl")
 include("AbstractFixedEffectMatrix/FixedEffectLinearMap.jl")
 include("AbstractFixedEffectMatrix/FixedEffectLinearMapParallel.jl")
 
-function __init__()
-	@require CuArrays = "3a865a2d-5b23-5a0f-bc46-62713ec82fae" include("AbstractFixedEffectMatrix/FixedEffectLinearMapGPU.jl")
+if has_cuarrays()
+	include("AbstractFixedEffectMatrix/FixedEffectLinearMapGPU.jl")
 end
 
 
