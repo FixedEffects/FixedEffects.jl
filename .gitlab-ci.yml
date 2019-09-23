@@ -1,0 +1,15 @@
+variables:
+  CI_IMAGE_TAG: 'cuda'
+
+include:
+  - 'https://raw.githubusercontent.com/JuliaGPU/gitlab-ci/master/templates/v3/common.yml'
+
+test:dev:
+  allow_failure: true
+
+  test:
+      image: "juliagpu/julia:v1.1-${CI_IMAGE_TAG}"
+      script:
+        - mkdir $JULIA_DEPOT_PATH # Pkg.jl#325
+        - julia -e 'using InteractiveUtils; versioninfo()'
+        - julia --project -e 'using Pkg; Pkg.pkg"add CuArrays; test"'
