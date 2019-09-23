@@ -1,12 +1,11 @@
 ##############################################################################
 ## 
-## AbstractFixedEffectMatrix
+## AbstractFixedEffectSolver
 ##
 ## this type must defined solve_residuals!, solve_coefficients!
 ##
 ##############################################################################
-abstract type AbstractFixedEffectMatrix{T} end
-eltype(fem::AbstractFixedEffectMatrix{T}) where {T} = T
+abstract type AbstractFixedEffectSolver{T} end
 
 
 """
@@ -40,10 +39,20 @@ function solve_residuals!(y::Union{AbstractVector, AbstractMatrix}, fes::Abstrac
 	method::Symbol = :lsmr, maxiter::Integer = 10000, 
 	double_precision::Bool = eltype(y) == Float64, tol::Real = double_precision ? sqrt(eps(Float64)) : sqrt(eps(Float32)))
 	any(ismissing.(fes)) && error("Some FixedEffect has a missing value for reference or interaction")
-	feM = AbstractFixedEffectMatrix{double_precision ? Float64 : Float32}(fes, sqrt.(weights.values), Val{method})
+	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, sqrt.(weights.values), Val{method})
 	solve_residuals!(y, feM; maxiter = maxiter, tol = tol)
 end
 
+function solve_residuals!(X::AbstractMatrix, feM::AbstractFixedEffectSolver; kwargs...)
+	iterations = Int[]
+	convergeds = Bool[]
+	for x in eachcol(X)
+		_, iteration, converged = solve_residuals!(x, feM; kwargs...)
+		push!(iterations, iteration)
+		push!(convergeds, converged)
+	end
+	return X, iterations, convergeds
+end
 """
 Solve a least square problem for a set of FixedEffects
 
@@ -80,6 +89,6 @@ function solve_coefficients!(y::AbstractVector, fes::AbstractVector{<: FixedEffe
 	method::Symbol = :lsmr, maxiter::Integer = 10000,
 	double_precision::Bool = eltype(y) == Float64, tol::Real = double_precision ? sqrt(eps(Float64)) : sqrt(eps(Float32)))
 	any(ismissing.(fes)) && error("Some FixedEffect has a missing value for reference or interaction")
-	feM = AbstractFixedEffectMatrix{double_precision ? Float64 : Float32}(fes, sqrt.(weights.values), Val{method})
+	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, sqrt.(weights.values), Val{method})
 	solve_coefficients!(y, feM; maxiter = maxiter, tol = tol)
 end

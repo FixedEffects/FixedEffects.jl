@@ -31,9 +31,11 @@ end
 ##
 ##############################################################################
 
+
 export 
 group,
 FixedEffect,
+AbstractFixedEffectSolver,
 AbstractFixedEffectMatrix,
 solve_residuals!,
 solve_coefficients!
@@ -47,12 +49,14 @@ solve_coefficients!
 include("utils/lsmr.jl")
 include("FixedEffect.jl")
 include("solve.jl")
-include("AbstractFixedEffectMatrix/FixedEffectLinearMap.jl")
-include("AbstractFixedEffectMatrix/FixedEffectLinearMapParallel.jl")
+include("AbstractFixedEffectSolver/FixedEffectLinearMap.jl")
+include("AbstractFixedEffectSolver/FixedEffectLSMR.jl")
+include("AbstractFixedEffectSolver/FixedEffectLSMRParallel.jl")
 
 if has_cuarrays()
-	include("AbstractFixedEffectMatrix/FixedEffectLinearMapGPU.jl")
+	include("AbstractFixedEffectSolver/FixedEffectLSMRGPU.jl")
 end
+AbstractFixedEffectMatrix{T} = AbstractFixedEffectSolver{T}
 
 
 end  # module FixedEffectModels
