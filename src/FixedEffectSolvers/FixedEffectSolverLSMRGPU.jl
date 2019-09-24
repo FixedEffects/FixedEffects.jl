@@ -36,18 +36,18 @@ const N_THREADS = 256
 function FixedEffectLinearMap{T}(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}}) where {T}
 	fes = [cu(T, fe) for fe in fes]
 	sqrtw = cu(T, sqrtw)
-	scales = [scale!(cuzeros(T, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes]
-	caches = [cache!(cuzeros(T, length(sqrtw)), scale, fe.refs, fe.interaction, sqrtw) for (fe, scale) in zip(fes, scales)]
-	return FixedEffectLinearMap{T}(fes, sqrtw, scales, caches)
+	colnorm = [colnorm!(cuzeros(T, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes]
+	caches = [cache!(cuzeros(T, length(sqrtw)), fe.interaction, sqrtw, scale, fe.refs) for (fe, scale) in zip(fes, colnorm)]
+	return FixedEffectLinearMap{T}(fes, sqrtw, colnorm, caches)
 end
 
-function scale!(fecoef::CuVector, refs::CuVector, y::CuVector, sqrtw::CuVector)
+function colnorm!(fecoef::CuVector, refs::CuVector, y::CuVector, sqrtw::CuVector)
 	nblocks = cld(length(refs), N_THREADS) 
-	@cuda threads=N_THREADS blocks=nblocks scale_kernel!(fecoef, refs, y, sqrtw)
-	fecoef .= one(eltype(fecoef)) ./ sqrt.(fecoef)
+	@cuda threads=N_THREADS blocks=nblocks colnorm!_kernel!(fecoef, refs, y, sqrtw)
+	fecoef .= sqrt.(fecoef)
 end
 
-function scale_kernel!(fecoef, refs, y, sqrtw)
+function colnorm!_kernel!(fecoef, refs, y, sqrtw)
 	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
 	@inbounds for i = index:stride:length(y)
@@ -55,17 +55,17 @@ function scale_kernel!(fecoef, refs, y, sqrtw)
 	end
 end
 
-function cache!(y::CuVector, fecoef::CuVector, refs::CuVector, interaction::CuVector , sqrtw::CuVector)
+function cache!(y::CuVector, interaction::CuVector , sqrtw::CuVector, fecoef::CuVector, refs::CuVector)
 	nblocks = cld(length(y), N_THREADS) 
-	@cuda threads=N_THREADS blocks=nblocks cache_kernel!(y, fecoef, refs, interaction, sqrtw)
+	@cuda threads=N_THREADS blocks=nblocks cache_kernel!(y, interaction, sqrtw, fecoef, refs)
 	return y
 end
 
-function cache_kernel!(y, fecoef, refs, interaction, sqrtw)
+function cache_kernel!(y, interaction, sqrtw, fecoef, refs)
 	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
 	@inbounds for i = index:stride:length(y)
-		y[i] += fecoef[refs[i]] * interaction[i] * sqrtw[i]
+		y[i] += interaction[i] * sqrtw[i] / fecoef[refs[i]]
 	end
 end
 
@@ -100,53 +100,64 @@ end
 ## Implement AbstractFixedEffectSolver interface
 ##
 ##############################################################################
-struct FixedEffectLSMRGPU{T} <: AbstractFixedEffectSolver{T}
+struct FixedEffectSolverLSMRGPU{T} <: AbstractFixedEffectSolver{T}
 	m::FixedEffectLinearMap{T}
-	xs::FixedEffectCoefficients{T}
+	b::CuVector{T}
+	r::CuVector{T}
+	x::FixedEffectCoefficients{T}
 	v::FixedEffectCoefficients{T}
 	h::FixedEffectCoefficients{T}
 	hbar::FixedEffectCoefficients{T}
-	u::CuVector{T}
-	r::CuVector{T}
 	tmp::Vector{T} # used to convert AbstractVector to Vector{T}
 	fes::Vector{<:FixedEffect}
 end
 	
 function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}}) where {T}
 	m = FixedEffectLinearMap{T}(fes, sqrtw, Val{:lsmr_gpu})
-	xs = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
+	b = cuzeros(T, length(sqrtw))
+	r = cuzeros(T, length(sqrtw))
+	x = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
 	v = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
 	h = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
 	hbar = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
-	u = cuzeros(T, length(sqrtw))
-	r = cuzeros(T, length(sqrtw))
 	tmp = zeros(T, length(sqrtw))
-	FixedEffectLSMRGPU(m, xs, v, h, hbar, u, r, tmp, fes)
+	FixedEffectSolverLSMRGPU(m, b, r, x, v, h, hbar, tmp, fes)
 end
 
-function solve_residuals!(r::AbstractVector, feM::FixedEffectLSMRGPU; tol::Real = 1e-8, maxiter::Integer = 100_000)
+function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverLSMRGPU; tol::Real = 1e-8, maxiter::Integer = 100_000)
 	copyto!(feM.tmp, r)
 	copyto!(feM.r, feM.tmp)
 	feM.r .*=  feM.m.sqrtw
-	copyto!(feM.u, feM.r)
-	fill!(feM.xs, 0.0)
-	x, ch = lsmr!(feM.xs, feM.m, feM.u, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, conlim = 1e8, maxiter = maxiter)
-	mul!(feM.r, feM.m, feM.xs, -1.0, 1.0)
+	copyto!(feM.b, feM.r)
+	fill!(feM.x, 0.0)
+	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, conlim = 1e8, maxiter = maxiter)
+	mul!(feM.r, feM.m, feM.x, -1.0, 1.0)
 	feM.r ./=  feM.m.sqrtw
 	copyto!(feM.tmp, feM.r)
 	copyto!(r, feM.tmp)
 	return r, div(ch.mvps, 2), ch.isconverged
 end
 
-function solve_coefficients!(r::AbstractVector, feM::FixedEffectLSMRGPU; tol::Real = 1e-8, maxiter::Integer = 100_000)
-	copyto!(feM.tmp, r)
-	copyto!(feM.u, feM.tmp)
-	feM.u .*= feM.m.sqrtw
-	fill!(feM.xs, 0.0)
-	x, ch = lsmr!(feM.xs, feM.m, feM.u, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, conlim = 1e8, maxiter = maxiter)
-	for (x, scale) in zip(feM.xs.x, feM.m.scales)
-		x .*=  scale
+function solve_residuals!(X::AbstractMatrix, feM::FixedEffectSolverLSMRGPU; kwargs...)
+	iterations = Int[]
+	convergeds = Bool[]
+	for x in eachcol(X)
+		_, iteration, converged = solve_residuals!(x, feM; kwargs...)
+		push!(iterations, iteration)
+		push!(convergeds, converged)
 	end
-	xs = Vector{eltype(r)}[collect(x) for x in feM.xs.x]
-	full(normalize!(xs, feM.fes; tol = tol, maxiter = maxiter), feM.fes), div(ch.mvps, 2), ch.isconverged
+	return X, iterations, convergeds
+end
+
+function solve_coefficients!(r::AbstractVector, feM::FixedEffectSolverLSMRGPU; tol::Real = 1e-8, maxiter::Integer = 100_000)
+	copyto!(feM.tmp, r)
+	copyto!(feM.b, feM.tmp)
+	feM.b .*= feM.m.sqrtw
+	fill!(feM.x, 0.0)
+	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, conlim = 1e8, maxiter = maxiter)
+	for (x, scale) in zip(feM.x.x, feM.m.colnorm)
+		x ./=  scale
+	end
+	x = Vector{eltype(r)}[collect(x) for x in feM.x.x]
+	full(normalize!(x, feM.fes; tol = tol, maxiter = maxiter), feM.fes), div(ch.mvps, 2), ch.isconverged
 end

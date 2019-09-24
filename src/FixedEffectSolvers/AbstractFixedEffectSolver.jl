@@ -43,16 +43,6 @@ function solve_residuals!(y::Union{AbstractVector, AbstractMatrix}, fes::Abstrac
 	solve_residuals!(y, feM; maxiter = maxiter, tol = tol)
 end
 
-function solve_residuals!(X::AbstractMatrix, feM::AbstractFixedEffectSolver; kwargs...)
-	iterations = Int[]
-	convergeds = Bool[]
-	for x in eachcol(X)
-		_, iteration, converged = solve_residuals!(x, feM; kwargs...)
-		push!(iterations, iteration)
-		push!(convergeds, converged)
-	end
-	return X, iterations, convergeds
-end
 """
 Solve a least square problem for a set of FixedEffects
 

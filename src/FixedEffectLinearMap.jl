@@ -13,36 +13,36 @@ struct FixedEffectCoefficients{T}
 	x::Vector{<:AbstractVector{T}}
 end
 
-eltype(xs::FixedEffectCoefficients{T}) where {T} = T
-length(xs::FixedEffectCoefficients) = sum(length(x) for x in xs.x)
-norm(xs::FixedEffectCoefficients) = sqrt(sum(sum(abs2, x) for x in xs.x))
+eltype(fecoef::FixedEffectCoefficients{T}) where {T} = T
+length(fecoef::FixedEffectCoefficients) = sum(length(x) for x in fecoef.x)
+norm(fecoef::FixedEffectCoefficients) = sqrt(sum(sum(abs2, x) for x in fecoef.x))
 
-function fill!(xs::FixedEffectCoefficients, α::Number)
-	for x in xs.x
+function fill!(fecoef::FixedEffectCoefficients, α::Number)
+	for x in fecoef.x
 		fill!(x, α)
 	end
-	return xs
+	return fecoef
 end
 
-function rmul!(xs::FixedEffectCoefficients, α::Number)
-	for x in xs.x
+function rmul!(fecoef::FixedEffectCoefficients, α::Number)
+	for x in fecoef.x
 		rmul!(x, α)
 	end
-	return xs
+	return fecoef
 end
 
-function copyto!(xs1::FixedEffectCoefficients, xs2::FixedEffectCoefficients)
-	for (x1, x2) in zip(xs1.x, xs2.x)
+function copyto!(fecoef1::FixedEffectCoefficients, fecoef2::FixedEffectCoefficients)
+	for (x1, x2) in zip(fecoef1.x, fecoef2.x)
 		copyto!(x1, x2)
 	end
-	return xs1
+	return fecoef1
 end
 
-function axpy!(α::Number, xs1::FixedEffectCoefficients, xs2::FixedEffectCoefficients)
-	for (x1, x2) in zip(xs1.x, xs2.x)
+function axpy!(α::Number, fecoef1::FixedEffectCoefficients, fecoef2::FixedEffectCoefficients)
+	for (x1, x2) in zip(fecoef1.x, fecoef2.x)
 		axpy!(α, x1, x2)
 	end
-	return xs2
+	return fecoef2
 end
 
 ##############################################################################
@@ -50,7 +50,7 @@ end
 ## FixedEffectLinearMap
 ##
 ## Model matrix of categorical variables
-## normalized by diag(1/a1, ..., 1/aN) (Jacobi preconditoner)
+## mutiplied by diag(1/sqrt(∑w * interaction^2, ..., ∑w * interaction^2) (Jacobi preconditoner)
 ##
 ## We define these methods used in lsmr! (duck typing):
 ## eltyp
@@ -62,28 +62,28 @@ end
 struct FixedEffectLinearMap{T}
 	fes::Vector{<:FixedEffect}
 	sqrtw::AbstractVector{T}
-	scales::Vector{<:AbstractVector}
+	colnorm::Vector{<:AbstractVector}
 	caches::Vector{<:AbstractVector}
 end
 
 
 function FixedEffectLinearMap{T}(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr}}) where {T}
 	sqrtw = convert(AbstractVector{T}, sqrtw)
-	scales = [scale!(zeros(T, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes]
-	caches = [cache!(zeros(T, length(sqrtw)),  scale, fe.refs, fe.interaction, sqrtw) for (fe, scale) in zip(fes, scales)]
-	return FixedEffectLinearMap{T}(fes, sqrtw, scales, caches)
+	colnorm = [colnorm!(zeros(T, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes]
+	caches = [cache!(zeros(T, length(sqrtw)), fe.interaction, sqrtw, scale, fe.refs) for (fe, scale) in zip(fes, colnorm)]
+	return FixedEffectLinearMap{T}(fes, sqrtw, colnorm, caches)
 end
 
-function scale!(fecoef::AbstractVector, refs::AbstractVector, interaction::AbstractVector, sqrtw::AbstractVector)
+function colnorm!(fecoef::AbstractVector, refs::AbstractVector, interaction::AbstractVector, sqrtw::AbstractVector)
 	@inbounds @simd for i in eachindex(refs)
 		fecoef[refs[i]] += abs2(interaction[i] * sqrtw[i])
 	end
-	fecoef .= 1 ./ sqrt.(fecoef)
+	fecoef .= sqrt.(fecoef)
 end
 
-function cache!(y::AbstractVector,  fecoef::AbstractVector, refs::AbstractVector, interaction::AbstractVector,sqrtw::AbstractVector)
+function cache!(y::AbstractVector, interaction::AbstractVector, sqrtw::AbstractVector, fecoef::AbstractVector, refs::AbstractVector)
 	@inbounds @simd for i in eachindex(y)
-		y[i] = fecoef[refs[i]] * interaction[i] * sqrtw[i]
+		y[i] = interaction[i] * sqrtw[i] / fecoef[refs[i]]
 	end
 	return y
 end
@@ -125,3 +125,6 @@ function mean!(fecoef::AbstractVector, refs::AbstractVector, α::Number, y::Abst
 		@inbounds fecoef[refs[i]] += α * y[i] * cache[i]
 	end
 end
+
+
+

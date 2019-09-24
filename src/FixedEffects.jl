@@ -48,13 +48,13 @@ solve_coefficients!
 ##############################################################################
 include("utils/lsmr.jl")
 include("FixedEffect.jl")
-include("AbstractFixedEffectSolver.jl")
-include("FixedEffectSolvers/FixedEffectLinearMap.jl")
-include("FixedEffectSolvers/FixedEffectLSMR.jl")
-include("FixedEffectSolvers/FixedEffectLSMRParallel.jl")
-
+include("FixedEffectLinearMap.jl")
+include("FixedEffectSolvers/AbstractFixedEffectSolver.jl")
+include("FixedEffectSolvers/FixedEffectSolverLSMR.jl")
+include("FixedEffectSolvers/FixedEffectSolverLSMRParallel.jl")
+include("FixedEffectSolvers/FixedEffectSolverLSMRThreads.jl")
 if has_cuarrays()
-	include("FixedEffectSolvers/FixedEffectLSMRGPU.jl")
+	include("FixedEffectSolvers/FixedEffectSolverLSMRGPU.jl")
 end
 AbstractFixedEffectMatrix{T} = AbstractFixedEffectSolver{T}
 
