@@ -36,7 +36,6 @@ export
 group,
 FixedEffect,
 AbstractFixedEffectSolver,
-AbstractFixedEffectMatrix,
 solve_residuals!,
 solve_coefficients!
 
@@ -56,7 +55,6 @@ include("FixedEffectSolvers/FixedEffectSolverLSMRThreads.jl")
 if has_cuarrays()
 	include("FixedEffectSolvers/FixedEffectSolverLSMRGPU.jl")
 end
-AbstractFixedEffectMatrix{T} = AbstractFixedEffectSolver{T}
 
 
 end  # module FixedEffectModels
