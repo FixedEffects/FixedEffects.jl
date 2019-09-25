@@ -19,12 +19,12 @@ function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, sqrtw::Abstrac
 	return FixedEffectSolverLSMR(m, b, r, x, v, h, hbar)
 end
 
-function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverLSMR; tol::Real = 1e-8, maxiter::Integer = 100_000)
+function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverLSMR{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	copyto!(feM.r, r)
 	feM.r .*=  feM.m.sqrtw
 	fill!(feM.x, 0)
 	copy!(feM.b, feM.r)
-	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar)
+	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
 	mul!(feM.r, feM.m, feM.x, -1.0, 1.0)
 	feM.r ./=  feM.m.sqrtw
 	copyto!(r, feM.r)
@@ -42,11 +42,11 @@ function solve_residuals!(X::AbstractMatrix, feM::FixedEffectSolverLSMR; kwargs.
 	return X, iterations, convergeds
 end
 
-function solve_coefficients!(r::AbstractVector, feM::FixedEffectSolverLSMR; tol::Real = 1e-8, maxiter::Integer = 100_000)
+function solve_coefficients!(r::AbstractVector, feM::FixedEffectSolverLSMR{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	copyto!(feM.b, r)
 	feM.b .*=  feM.m.sqrtw
 	fill!(feM.x, 0)
-	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar)
+	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
 	for (x, scale) in zip(feM.x.x, feM.m.colnorm)
 		x ./=  scale
 	end

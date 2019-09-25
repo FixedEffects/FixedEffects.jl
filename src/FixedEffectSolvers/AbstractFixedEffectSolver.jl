@@ -35,7 +35,7 @@ p2 = repeat(1:5, outer = 2)
 solve_residuals!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
-function solve_residuals!(y::Union{AbstractVector, AbstractMatrix}, fes::AbstractVector{<: FixedEffect}, weights::AbstractWeights = Weights(Ones{eltype(y)}(size(y, 1))); 
+function solve_residuals!(y::Union{AbstractVector{<: Number}, AbstractMatrix{<: Number}}, fes::AbstractVector{<: FixedEffect}, weights::AbstractWeights = Weights(Ones{eltype(y)}(size(y, 1))); 
 	method::Symbol = :lsmr, maxiter::Integer = 10000, 
 	double_precision::Bool = eltype(y) == Float64, tol::Real = double_precision ? sqrt(eps(Float64)) : sqrt(eps(Float32)))
 	any(ismissing.(fes)) && error("Some FixedEffect has a missing value for reference or interaction")
@@ -75,7 +75,7 @@ x = rand(10)
 solve_coefficients!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
-function solve_coefficients!(y::AbstractVector, fes::AbstractVector{<: FixedEffect}, weights::AbstractWeights  = Weights(Ones{eltype(y)}(length(y))); 
+function solve_coefficients!(y::AbstractVector{<: Number}, fes::AbstractVector{<: FixedEffect}, weights::AbstractWeights  = Weights(Ones{eltype(y)}(length(y))); 
 	method::Symbol = :lsmr, maxiter::Integer = 10000,
 	double_precision::Bool = eltype(y) == Float64, tol::Real = double_precision ? sqrt(eps(Float64)) : sqrt(eps(Float32)))
 	any(ismissing.(fes)) && error("Some FixedEffect has a missing value for reference or interaction")

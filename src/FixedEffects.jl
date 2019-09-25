@@ -51,7 +51,6 @@ include("FixedEffectLinearMap.jl")
 include("FixedEffectSolvers/AbstractFixedEffectSolver.jl")
 include("FixedEffectSolvers/FixedEffectSolverLSMR.jl")
 include("FixedEffectSolvers/FixedEffectSolverLSMRParallel.jl")
-include("FixedEffectSolvers/FixedEffectSolverLSMRThreads.jl")
 if has_cuarrays()
 	include("FixedEffectSolvers/FixedEffectSolverLSMRGPU.jl")
 end
