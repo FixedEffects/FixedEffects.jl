@@ -8,14 +8,12 @@ fes = [FixedEffect(id1), FixedEffect(id2)]
 x = rand(N)
 
 # simple problem
-x = rand(N)
-@time solve_residuals!(x, fes; tol = 1e-6)
+X = deepcopy(x)
+@time solve_residuals!(X, fes; tol = 1e-6)
 #  0.807994 seconds (848 allocations: 311.411 MiB, 10.14% gc time)
-x = rand(N)
 X = [x x x x x x x x x x]
 @time solve_residuals!(X, fes)
 #  6.610115 seconds (8.83 k allocations: 311.572 MiB, 1.54% gc time)
-x = rand(N)
 X = [x x x x x x x x x x]
 @time solve_residuals!(X,fes, method = :lsmr_threads)
 #  5.120222 seconds (9.19 k allocations: 1.210 GiB, 8.59% gc time)

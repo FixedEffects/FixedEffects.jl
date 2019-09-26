@@ -13,32 +13,32 @@ struct FixedEffectCoefficients{T}
 	x::Vector{<:AbstractVector{T}}
 end
 
-eltype(fecoef::FixedEffectCoefficients{T}) where {T} = T
-length(fecoef::FixedEffectCoefficients) = sum(length(x) for x in fecoef.x)
-norm(fecoef::FixedEffectCoefficients) = sqrt(sum(sum(abs2, x) for x in fecoef.x))
+Base.eltype(fecoef::FixedEffectCoefficients{T}) where {T} = T
+Base.length(fecoef::FixedEffectCoefficients) = sum(length(x) for x in fecoef.x)
+LinearAlgebra.norm(fecoef::FixedEffectCoefficients) = sqrt(sum(sum(abs2, x) for x in fecoef.x))
 
-function fill!(fecoef::FixedEffectCoefficients, α::Number)
+function Base.fill!(fecoef::FixedEffectCoefficients, α::Number)
 	for x in fecoef.x
 		fill!(x, α)
 	end
 	return fecoef
 end
 
-function rmul!(fecoef::FixedEffectCoefficients, α::Number)
+function LinearAlgebra.rmul!(fecoef::FixedEffectCoefficients, α::Number)
 	for x in fecoef.x
 		rmul!(x, α)
 	end
 	return fecoef
 end
 
-function copyto!(fecoef1::FixedEffectCoefficients, fecoef2::FixedEffectCoefficients)
+function Base.copyto!(fecoef1::FixedEffectCoefficients, fecoef2::FixedEffectCoefficients)
 	for (x1, x2) in zip(fecoef1.x, fecoef2.x)
 		copyto!(x1, x2)
 	end
 	return fecoef1
 end
 
-function axpy!(α::Number, fecoef1::FixedEffectCoefficients, fecoef2::FixedEffectCoefficients)
+function LinearAlgebra.axpy!(α::Number, fecoef1::FixedEffectCoefficients, fecoef2::FixedEffectCoefficients)
 	for (x1, x2) in zip(fecoef1.x, fecoef2.x)
 		axpy!(α, x1, x2)
 	end
@@ -88,14 +88,14 @@ function cache!(y::AbstractVector, interaction::AbstractVector, sqrtw::AbstractV
 	return y
 end
 
-adjoint(fem::FixedEffectLinearMap) = Adjoint(fem)
+LinearAlgebra.adjoint(fem::FixedEffectLinearMap) = Adjoint(fem)
 
-function size(fem::FixedEffectLinearMap, dim::Integer)
+function Base.size(fem::FixedEffectLinearMap, dim::Integer)
 	(dim == 1) ? length(fem.fes[1].refs) : (dim == 2) ? sum(fe.n for fe in fem.fes) : 1
 end
-eltype(x::FixedEffectLinearMap{T}) where {T} = T
+Base.eltype(x::FixedEffectLinearMap{T}) where {T} = T
 
-function mul!(y::AbstractVector, fem::FixedEffectLinearMap, 
+function LinearAlgebra.mul!(y::AbstractVector, fem::FixedEffectLinearMap, 
 			  fecoefs::FixedEffectCoefficients, α::Number, β::Number)
 	rmul!(y, β)
 	for (fecoef, fe, cache) in zip(fecoefs.x, fem.fes, fem.caches)
@@ -110,7 +110,7 @@ function demean!(y::AbstractVector, α::Number, fecoef::AbstractVector, refs::Ab
 	end
 end
 
-function mul!(fecoefs::FixedEffectCoefficients, Cfem::Adjoint{T, FixedEffectLinearMap{T}},
+function LinearAlgebra.mul!(fecoefs::FixedEffectCoefficients, Cfem::Adjoint{T, FixedEffectLinearMap{T}},
 				y::AbstractVector, α::Number, β::Number) where {T}
 	fem = adjoint(Cfem)
 	rmul!(fecoefs, β)

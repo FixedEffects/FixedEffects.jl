@@ -1,4 +1,3 @@
-
 module FixedEffects
 
 ##############################################################################
@@ -6,10 +5,10 @@ module FixedEffects
 ## Dependencies
 ##
 ##############################################################################
-import Base: size, copyto!, getindex, length, fill!, eltype, length, view, adjoint, show, ismissing
-import LinearAlgebra: mul!, rmul!, norm, Matrix, Diagonal, cholesky, cholesky!, Symmetric, Hermitian, rank, dot, eigen, axpy!, svd, I, Adjoint, adjoint, diag, qr
-import Distributed: pmap
-import CategoricalArrays: CategoricalArray, CategoricalVector, compress, categorical, CategoricalPool, levels, droplevels!
+using Base
+using LinearAlgebra
+using Distributed
+using CategoricalArrays
 using FillArrays
 using Reexport
 using CUDAapi
@@ -55,5 +54,4 @@ if has_cuarrays()
 	include("FixedEffectSolvers/FixedEffectSolverLSMRGPU.jl")
 end
 
-
-end  # module FixedEffectModels
+end  # module FixedEffects
