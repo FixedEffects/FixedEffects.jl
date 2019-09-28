@@ -1,9 +1,9 @@
-using FixedEffects, CategoricalArrays, Random, Statistics
+using FixedEffects, Random, Statistics
 Random.seed!(1234)
 N = 10000000
 K = 100
-id1 = categorical(Int.(rand(1:(N/K), N)))
-id2 = categorical(Int.(rand(1:K, N)))
+id1 = rand(1:div(N, K), N)
+id2 = rand(1:K, N)
 fes = [FixedEffect(id1), FixedEffect(id2)]
 x = rand(N)
 
@@ -27,7 +27,16 @@ pid = rand(1:M, N)
 fid = [rand(max(1, div(x, 8)-10):min(O, div(x, 8)+10)) for x in pid]
 x = rand(N)
 fes = [FixedEffect(pid), FixedEffect(fid)]
-@time solve_residuals!([x x x x], fes; maxiter = 300)
+@time solve_residuals!([x x x x], fes; double_precision = false)
 # 12.690011 seconds (191.26 k allocations: 67.887 MiB, 0.03% gc time)
 @time solve_residuals!([x x x x], fes, method = :lsmr_threads, maxiter = 300)
 # 10.660428 seconds (239.89 k allocations: 189.271 MiB, 0.80% gc time)
+
+# cluster (381 iterations)
+@time solve_residuals!([x x x x], fes; double_precision = false)
+#  11.760708 seconds (292.08 k allocations: 51.847 MiB, 0.95% gc time)
+@time solve_residuals!([x x x x], fes, method = :lsmr_gpu, double_precision = false)
+#  2.342490 seconds (1.15 M allocations: 90.584 MiB, 5.05% gc time)
+
+
+
