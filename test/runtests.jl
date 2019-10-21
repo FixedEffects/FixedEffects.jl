@@ -1,4 +1,4 @@
-tests = ["solve.jl"]
+tests = ["solve.jl", "group.jl"]
 
 println("Running tests:")
 
