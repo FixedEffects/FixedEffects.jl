@@ -142,7 +142,7 @@ function solve_residuals!(X::AbstractMatrix, feM::FixedEffectSolverLSMRGPU; kwar
 	iterations = Int[]
 	convergeds = Bool[]
 	for j in 1:size(X, 2)
-		_, iteration, converged = solve_residuals!(view(x, :, j), feM; kwargs...)
+		_, iteration, converged = solve_residuals!(view(X, :, j), feM; kwargs...)
 		push!(iterations, iteration)
 		push!(convergeds, converged)
 	end
