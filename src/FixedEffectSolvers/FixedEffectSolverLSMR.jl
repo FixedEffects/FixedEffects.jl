@@ -23,7 +23,7 @@ function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverLSMR{T}; tol:
 	copyto!(feM.r, r)
 	feM.r .*=  feM.m.sqrtw
 	fill!(feM.x, 0)
-	copy!(feM.b, feM.r)
+	copyto!(feM.b, feM.r)
 	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
 	mul!(feM.r, feM.m, feM.x, -1.0, 1.0)
 	feM.r ./=  feM.m.sqrtw
@@ -34,8 +34,8 @@ end
 function solve_residuals!(X::AbstractMatrix, feM::FixedEffectSolverLSMR; kwargs...)
 	iterations = Int[]
 	convergeds = Bool[]
-	for x in eachcol(X)
-		_, iteration, converged = solve_residuals!(x, feM; kwargs...)
+	for j in 1:size(X, 2)
+		_, iteration, converged = solve_residuals!(view(X, :, j), feM; kwargs...)
 		push!(iterations, iteration)
 		push!(convergeds, converged)
 	end

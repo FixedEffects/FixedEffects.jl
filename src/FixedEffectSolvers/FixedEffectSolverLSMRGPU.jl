@@ -141,8 +141,8 @@ end
 function solve_residuals!(X::AbstractMatrix, feM::FixedEffectSolverLSMRGPU; kwargs...)
 	iterations = Int[]
 	convergeds = Bool[]
-	for x in eachcol(X)
-		_, iteration, converged = solve_residuals!(x, feM; kwargs...)
+	for j in 1:size(X, 2)
+		_, iteration, converged = solve_residuals!(view(x, :, j), feM; kwargs...)
 		push!(iterations, iteration)
 		push!(convergeds, converged)
 	end
