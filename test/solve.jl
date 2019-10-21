@@ -20,9 +20,9 @@ for method in method_s
 	println(method)
 	(c, iter, conv) = solve_coefficients!(copy(x), deepcopy(fes), method = method)
 	@test c ≈ c_lsmr
-	(r, iter, conv) = solve_residuals!(copy(x),deepcopy(fes), method = method)
+	(r, iter, conv) = solve_residuals!(copy(x), deepcopy(fes), method = method)
 	@test r ≈ r_ols
-	(r, iter, conv) = solve_residuals!([x x x x x], deepcopy(fes), method=method)
+	(r, iter, conv) = solve_residuals!([x x x x x], deepcopy(fes), method = method)
 	@test r ≈ [r_ols r_ols r_ols r_ols r_ols]
 end
 for method in method_s
