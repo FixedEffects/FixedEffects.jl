@@ -27,3 +27,6 @@ solve_coefficients!(x, [p1, p3])
 ```
 
 
+
+## Installation
+The package is registered in the [`General`](https://github.com/JuliaRegistries/General) registry and so can be installed at the REPL with `] add FixedEffects`.

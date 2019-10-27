@@ -6,23 +6,22 @@
 
 struct FixedEffectSolverLSMRCores{T} <: AbstractFixedEffectSolver{T}
     fes::Vector{<:FixedEffect}
-    sqrtw::AbstractVector{T}
+    weights::AbstractWeights
 end
 
-function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, 
+function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, 
                 ::Type{Val{:lsmr_cores}}) where {T}
-    FixedEffectSolverLSMRCores{T}(fes, sqrtw)
+    FixedEffectSolverLSMRCores{T}(fes, weights)
 end
 
-function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, 
+function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractVector, 
                 ::Type{Val{:lsmr_parallel}}) where {T}
     info(":lsmr_parallel is deprecated. Use :lsmr_cores")
-    AbstractFixedEffectSolver{T}(fes, sqrtw, Val{:lsmr_cores})
+    AbstractFixedEffectSolver{T}(fes, weights, Val{:lsmr_cores})
 end
 
-
 function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverLSMRCores{T}; kwargs...) where {T}
-    solve_residuals!(r, AbstractFixedEffectSolver{T}(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
+    solve_residuals!(r, AbstractFixedEffectSolver{T}(feM.fes, feM.weights, Val{:lsmr}); kwargs...)
 end
 
 function solve_residuals!(X::AbstractMatrix, feM::FixedEffectSolverLSMRCores; kwargs...)
@@ -38,7 +37,7 @@ function solve_residuals!(X::AbstractMatrix, feM::FixedEffectSolverLSMRCores; kw
 end
 
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectSolverLSMRCores{T}, ; kwargs...) where {T}
-    solve_coefficients!(r, AbstractFixedEffectSolver{T}(feM.fes, feM.sqrtw, Val{:lsmr}); kwargs...)
+    solve_coefficients!(r, AbstractFixedEffectSolver{T}(feM.fes, feM.weights, Val{:lsmr}); kwargs...)
 end
 
 ##############################################################################
@@ -54,8 +53,8 @@ struct FixedEffectSolverLSMRThreads{T} <: AbstractFixedEffectSolver{T}
     x::Vector{FixedEffectSolverLSMR{T}}
 end
 
-function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_threads}}) where {T}
-    FixedEffectSolverLSMRThreads([AbstractFixedEffectSolver{T}(fes, sqrtw, Val{:lsmr}) for _ in 1:Threads.nthreads()])
+function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:lsmr_threads}}) where {T}
+    FixedEffectSolverLSMRThreads([AbstractFixedEffectSolver{T}(fes, weights, Val{:lsmr}) for _ in 1:Threads.nthreads()])
 end
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverLSMRThreads; kwargs...)

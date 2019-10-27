@@ -38,8 +38,9 @@ solve_residuals!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 function solve_residuals!(y::Union{AbstractVector{<: Number}, AbstractMatrix{<: Number}}, fes::AbstractVector{<: FixedEffect}, weights::AbstractWeights = Weights(Ones{eltype(y)}(size(y, 1))); 
 	method::Symbol = :lsmr, maxiter::Integer = 10000, 
 	double_precision::Bool = eltype(y) == Float64, tol::Real = double_precision ? 1e-8 : 1e-6)
-	any(ismissing.(fes)) && error("Some FixedEffect has a missing value for reference or interaction")
-	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, sqrt.(weights.values), Val{method})
+	any((length(fe) != size(y, 1) for fe in fes)) && throw("FixedEffects must have the same length as y")
+	any(ismissing.(fes)) && throw("FixedEffects must not have missing values")
+	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, weights, Val{method})
 	solve_residuals!(y, feM; maxiter = maxiter, tol = tol)
 end
 
@@ -78,7 +79,8 @@ solve_coefficients!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 function solve_coefficients!(y::AbstractVector{<: Number}, fes::AbstractVector{<: FixedEffect}, weights::AbstractWeights  = Weights(Ones{eltype(y)}(length(y))); 
 	method::Symbol = :lsmr, maxiter::Integer = 10000,
 	double_precision::Bool = eltype(y) == Float64, tol::Real = double_precision ? 1e-8 : 1e-6)
-	any(ismissing.(fes)) && error("Some FixedEffect has a missing value for reference or interaction")
-	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, sqrt.(weights.values), Val{method})
+	any(ismissing.(fes)) && throw("Some FixedEffect has a missing value for reference or interaction")
+	any((length(fe) != length(y) for fe in fes))  && throw("FixedEffects must have the same length as y")
+	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, weights, Val{method})
 	solve_coefficients!(y, feM; maxiter = maxiter, tol = tol)
 end

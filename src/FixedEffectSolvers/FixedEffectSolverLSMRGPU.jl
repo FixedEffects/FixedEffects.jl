@@ -15,14 +15,12 @@ allowscalar(false)
 
 # https://github.com/JuliaGPU/CuArrays.jl/issues/306
 cuzeros(T::Type, n::Integer) = fill!(CuVector{T}(undef, n), zero(T))
-cuones(T::Type, n::Integer) = fill!(CuVector{T}(undef, n), one(T))
-
 function CuArrays.cu(T::Type, fe::FixedEffect)
 	refs = CuArray(fe.refs)
 	interaction = cu(T, fe.interaction)
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
 end
-CuArrays.cu(T::Type, w::Ones) = cuones(T, length(w))
+CuArrays.cu(T::Type, w::Union{Fill, Ones, Zeros}) = fill!(CuVector{T}(undef, length(w)), w[1])
 CuArrays.cu(T::Type, w::AbstractVector) = CuVector{T}(w)
 
 ##############################################################################
@@ -33,9 +31,9 @@ CuArrays.cu(T::Type, w::AbstractVector) = CuVector{T}(w)
 
 const N_THREADS = 256
 
-function FixedEffectLinearMap{T}(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}}) where {T}
+function FixedEffectLinearMap{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:lsmr_gpu}}) where {T}
 	fes = [cu(T, fe) for fe in fes]
-	sqrtw = cu(T, sqrtw)
+	sqrtw = cu(T, sqrt.(values(weights)))
 	colnorm = [colnorm!(cuzeros(T, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes]
 	caches = [cache!(cuzeros(T, length(sqrtw)), fe.interaction, sqrtw, scale, fe.refs) for (fe, scale) in zip(fes, colnorm)]
 	return FixedEffectLinearMap{T}(fes, sqrtw, colnorm, caches)
@@ -112,15 +110,15 @@ struct FixedEffectSolverLSMRGPU{T} <: AbstractFixedEffectSolver{T}
 	fes::Vector{<:FixedEffect}
 end
 	
-function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr_gpu}}) where {T}
-	m = FixedEffectLinearMap{T}(fes, sqrtw, Val{:lsmr_gpu})
-	b = cuzeros(T, length(sqrtw))
-	r = cuzeros(T, length(sqrtw))
+function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:lsmr_gpu}}) where {T}
+	m = FixedEffectLinearMap{T}(fes, weights, Val{:lsmr_gpu})
+	b = cuzeros(T, length(weights))
+	r = cuzeros(T, length(weights))
 	x = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
 	v = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
 	h = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
 	hbar = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
-	tmp = zeros(T, length(sqrtw))
+	tmp = zeros(T, length(weights))
 	FixedEffectSolverLSMRGPU(m, b, r, x, v, h, hbar, tmp, fes)
 end
 

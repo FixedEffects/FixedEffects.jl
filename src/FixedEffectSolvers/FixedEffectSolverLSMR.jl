@@ -8,10 +8,10 @@ struct FixedEffectSolverLSMR{T} <: AbstractFixedEffectSolver{T}
 	hbar::FixedEffectCoefficients{T}
 end
 
-function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr}}) where {T}
-	m = FixedEffectLinearMap{T}(fes, sqrtw, Val{:lsmr})
-	b = zeros(T, length(sqrtw))
-	r = zeros(T, length(sqrtw))
+function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:lsmr}}) where {T}
+	m = FixedEffectLinearMap{T}(fes, weights, Val{:lsmr})
+	b = zeros(T, length(weights))
+	r = zeros(T, length(weights))
 	x = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
 	v = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
 	h = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])

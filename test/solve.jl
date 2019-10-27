@@ -1,10 +1,6 @@
 using Test, FixedEffects
 
 method_s = [:lsmr, :lsmr_threads, :lsmr_cores]
-if isdefined(FixedEffects, :FixedEffectSolverLSMRGPU)
-	push!(method_s, :lsmr_gpu)
-end
-
 
 p1 = repeat(1:5, inner = 2)
 p2 = repeat(1:5, outer = 2)
@@ -12,9 +8,7 @@ x = [ 0.5548445405298847 , 0.9444014472663531 , 0.0510866660400604 , 0.941575022
 fes = [FixedEffect(p1), FixedEffect(p2)]
 r_ols =  [-0.2015993617092453,  0.2015993617092464, -0.2015993617092463,  0.2015993617092462, -0.2015993617092465,  0.2015993617092467, -0.2015993617092465,  0.2015993617092470, -0.2015993617092468,  0.20159936170924628]
 
-
 c_lsmr,_,_ = solve_coefficients!(copy(x), deepcopy(fes), method=:lsmr)
-
 
 for method in method_s
 	println(method)
@@ -24,6 +18,10 @@ for method in method_s
 	@test r ≈ r_ols
 	(r, iter, conv) = solve_residuals!([x x x x x], deepcopy(fes), method = method)
 	@test r ≈ [r_ols r_ols r_ols r_ols r_ols]
+end
+
+if isdefined(FixedEffects, :FixedEffectSolverLSMRGPU)
+	push!(method_s, :lsmr_gpu)
 end
 for method in method_s
 	if method != :qr
@@ -36,3 +34,8 @@ for method in method_s
 		@test r ≈ [r_ols r_ols r_ols r_ols r_ols] rtol = 1e-3
 	end
 end
+
+
+fe = FixedEffect([1, 2])
+@test_throws "FixedEffects must have the same length as y" ỹ = solve_residuals!(ones(100), [fe])
+

@@ -67,8 +67,8 @@ struct FixedEffectLinearMap{T}
 end
 
 
-function FixedEffectLinearMap{T}(fes::Vector{<:FixedEffect}, sqrtw::AbstractVector, ::Type{Val{:lsmr}}) where {T}
-	sqrtw = convert(AbstractVector{T}, sqrtw)
+function FixedEffectLinearMap{T}(fes::Vector{<:FixedEffect}, weights::AbstractVector, ::Type{Val{:lsmr}}) where {T}
+	sqrtw = convert(AbstractVector{T}, sqrt.(values(weights)))
 	colnorm = [colnorm!(zeros(T, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes]
 	caches = [cache!(zeros(T, length(sqrtw)), fe.interaction, sqrtw, scale, fe.refs) for (fe, scale) in zip(fes, colnorm)]
 	return FixedEffectLinearMap{T}(fes, sqrtw, colnorm, caches)

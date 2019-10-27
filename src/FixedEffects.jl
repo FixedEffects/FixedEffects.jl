@@ -46,7 +46,7 @@ solve_coefficients!
 ##############################################################################
 include("utils/lsmr.jl")
 include("FixedEffect.jl")
-include("FixedEffectLinearMap.jl")
+include("FixedEffectSolvers/FixedEffectLinearMap.jl")
 include("FixedEffectSolvers/AbstractFixedEffectSolver.jl")
 include("FixedEffectSolvers/FixedEffectSolverLSMR.jl")
 include("FixedEffectSolvers/FixedEffectSolverLSMRParallel.jl")
