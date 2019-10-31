@@ -1,8 +1,4 @@
-using FixedEffects
-
-tests = ["solve.jl",
-		 "utils.jl"
-		 ]
+tests = ["solve.jl", "utils.jl"]
 
 println("Running tests:")
 

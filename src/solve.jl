@@ -18,7 +18,7 @@ Solve a least square problem for a set of FixedEffects
 * `y` : A `AbstractVector` or an `AbstractMatrix`
 * `fes`: A `Vector{<:FixedEffect}`
 * `weights`: A `AbstractWeights`
-* `method` : A `Symbol` for the method. Choices are :lsmr, :lsmr_threads, :lsmr_parallel, :lsmr_gpu (requires `CuArrays` to be loaded before loading `FixedEffectModels`. Use the option `double_precision = false` to use `Float32` on the GPU).
+* `method` : A `Symbol` for the method. Choices are :lsmr, :lsmr_threads, :lsmr_parallel, :lsmr_gpu (requires `CuArrays`. Use the option `double_precision = false` to use `Float32` on the GPU).
 * `maxiter` : Maximum number of iterations
 * `double_precision::Bool`: Should the demeaning operation use Float64 rather than Float32? Default to true.
 * `tol` : Tolerance
@@ -53,7 +53,7 @@ d
 * `y` : A `AbstractVector` 
 * `fes`: A `Vector{<:FixedEffect}`
 * `weights`: A `AbstractWeights`
-* `method` : A `Symbol` for the method. Choices are :lsmr, :lsmr_threads, :lsmr_parallel, :lsmr_gpu (requires `CuArrays` to be loaded before loading `FixedEffectModels`. Use the option `double_precision = false` to use `Float32` on the GPU).
+* `method` : A `Symbol` for the method. Choices are :lsmr, :lsmr_threads, :lsmr_parallel, :lsmr_gpu (requires `CuArrays`. Use the option `double_precision = false` to use `Float32` on the GPU).
 * `maxiter` : Maximum number of iterations
 * `double_precision::Bool`: Should the demeaning operation use Float64 rather than Float32? Default to true.
 * `tol` : Tolerance

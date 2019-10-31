@@ -1,4 +1,4 @@
-using FixedEffects, CategoricalArrays, Test
+using Test, FixedEffects, CategoricalArrays
 
 v1 = ["ok", missing, "ok", "first"]
 v2 = [1, 2, 3, 1]
