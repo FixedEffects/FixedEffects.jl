@@ -1,11 +1,3 @@
-Adivtype(A,b) = Base.promote_op(/, eltype(b), eltype(A))
-
-function zerox(A, b)
-    T = Adivtype(A, b)
-    x = zeros(T, size(A, 2))
-end
-
-
 struct ConvergenceHistory{T, R}
     isconverged::Bool
     threshold::T
@@ -64,7 +56,7 @@ function lsmr!(x, A, b, v, h, hbar;
     length(hbar) == n || error("hbar has length $(length(hbar)) but should have length $n")
     length(b) == m || error("b has length $(length(b)) but should have length $m")
 
-    T = Adivtype(A, b)
+    T = Base.promote_op(/, eltype(b), eltype(A))
     Tr = real(T)
     normrs = Tr[]
     normArs = Tr[]
