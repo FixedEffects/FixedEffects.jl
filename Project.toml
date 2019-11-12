@@ -3,23 +3,23 @@ uuid = "c8885935-8500-56a7-9867-7708b20db0eb"
 version = "0.6.0"
 
 [deps]
+CUDAapi = "3895d2a7-ec45-59b8-82bb-cfc6a382f9b3"
+CategoricalArrays = "324d7699-5711-5eae-9e2f-1d82baa6b597"
+CuArrays = "3a865a2d-5b23-5a0f-bc46-62713ec82fae"
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
+FillArrays = "1a297f60-69ca-5386-bcde-b61e274b549b"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
-CategoricalArrays = "324d7699-5711-5eae-9e2f-1d82baa6b597"
-FillArrays = "1a297f60-69ca-5386-bcde-b61e274b549b"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
-CUDAapi = "3895d2a7-ec45-59b8-82bb-cfc6a382f9b3"
-CuArrays = "3a865a2d-5b23-5a0f-bc46-62713ec82fae"
 
 [compat]
-julia = "1"
-Reexport = "0"
+CUDAapi = "1.1, 1.2, 2.0"
 CategoricalArrays = "0"
-FillArrays = "0"
-StatsBase = "0"
-CUDAapi = "1.1, 1.2"
 CuArrays = "1"
+FillArrays = "0"
+Reexport = "0"
+StatsBase = "0"
+julia = "1"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
