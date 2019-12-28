@@ -9,14 +9,14 @@ abstract type AbstractFixedEffectSolver{T} end
 
 
 """
-Solve a least square problem for a set of FixedEffects
-
 `solve_residuals!(y, fes, weights; method = :lsmr, maxiter = 10000, double_precision = true, tol = 1e-8)`
+
+Returns ``y_i - X_i'\\beta`` where ``\\beta = argmin_{b} \\sum_i y_i - X_i'b`` and `X` denotes the matrix of fixed effects `fes`.
 
 ### Arguments
 * `y` : A `AbstractVector` or an `AbstractMatrix`
-* `fes`: A `Vector{<:FixedEffect}`
-* `weights`: A `AbstractWeights`
+* `fes`: A `AbstractVector{<:FixedEffect}`
+* `w`: A `AbstractWeights`
 * `method` : A `Symbol` for the method. Choices are :lsmr, :lsmr_threads, :lsmr_parallel, :lsmr_gpu (requires `CuArrays`. Use the option `double_precision = false` to use `Float32` on the GPU).
 * `maxiter` : Maximum number of iterations
 * `double_precision::Bool`: Should the demeaning operation use Float64 rather than Float32? Default to true.
@@ -35,12 +35,12 @@ p2 = repeat(1:5, outer = 2)
 solve_residuals!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
-function solve_residuals!(y::Union{AbstractVector{<: Number}, AbstractMatrix{<: Number}}, fes::AbstractVector{<: FixedEffect}, weights::AbstractWeights = Weights(Ones{eltype(y)}(size(y, 1))); 
+function solve_residuals!(y::Union{AbstractVector{<: Number}, AbstractMatrix{<: Number}}, fes::AbstractVector{<: FixedEffect}, w::AbstractWeights = Weights(Ones{eltype(y)}(size(y, 1))); 
 	method::Symbol = :lsmr, maxiter::Integer = 10000, 
 	double_precision::Bool = eltype(y) == Float64, tol::Real = double_precision ? 1e-8 : 1e-6)
 	any((length(fe) != size(y, 1) for fe in fes)) && throw("FixedEffects must have the same length as y")
 	any(ismissing.(fes)) && throw("FixedEffects must not have missing values")
-	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, weights, Val{method})
+	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method})
 	solve_residuals!(y, feM; maxiter = maxiter, tol = tol)
 end
 
@@ -48,18 +48,21 @@ end
 Solve a least square problem for a set of FixedEffects
 
 `solve_coefficients!(y, fes, weights; method = :lsmr, maxiter = 10000, double_precision = true, tol = 1e-8)`
-d
+
+Returns ``\\beta = argmin_{b} \\sum_i w_i(y_i - X_i'b)`` where `X` denotes the matrix of fixed effects `fes`.
+
 ### Arguments
 * `y` : A `AbstractVector` 
 * `fes`: A `Vector{<:FixedEffect}`
-* `weights`: A `AbstractWeights`
+* `w`: A `AbstractWeights`
 * `method` : A `Symbol` for the method. Choices are :lsmr, :lsmr_threads, :lsmr_parallel, :lsmr_gpu (requires `CuArrays`. Use the option `double_precision = false` to use `Float32` on the GPU).
 * `maxiter` : Maximum number of iterations
 * `double_precision::Bool`: Should the demeaning operation use Float64 rather than Float32? Default to true.
 * `tol` : Tolerance. Default to 1e-8 if `double_precision = true`, 1e-6 otherwise.
 
 ### Returns
-* `b` : Solution of the least square problem
+
+* ``\beta`` : Solution of the least square problem
 * `iterations`: Number of iterations
 * `converged`: Did the algorithm converge?
 Fixed effects are generally not unique. We standardize the solution 
@@ -76,11 +79,11 @@ x = rand(10)
 solve_coefficients!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
-function solve_coefficients!(y::AbstractVector{<: Number}, fes::AbstractVector{<: FixedEffect}, weights::AbstractWeights  = Weights(Ones{eltype(y)}(length(y))); 
+function solve_coefficients!(y::AbstractVector{<: Number}, fes::AbstractVector{<: FixedEffect}, w::AbstractWeights  = Weights(Ones{eltype(y)}(length(y))); 
 	method::Symbol = :lsmr, maxiter::Integer = 10000,
 	double_precision::Bool = eltype(y) == Float64, tol::Real = double_precision ? 1e-8 : 1e-6)
 	any(ismissing.(fes)) && throw("Some FixedEffect has a missing value for reference or interaction")
 	any((length(fe) != length(y) for fe in fes))  && throw("FixedEffects must have the same length as y")
-	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, weights, Val{method})
+	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method})
 	solve_coefficients!(y, feM; maxiter = maxiter, tol = tol)
 end
