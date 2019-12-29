@@ -1,3 +1,5 @@
+# Define methods used in LSMR
+
 ##############################################################################
 ## 
 ## FixedEffectCoefficients : vector x in A'Ax = A'b
@@ -66,33 +68,12 @@ struct FixedEffectLinearMap{T}
 	caches::Vector{<:AbstractVector}
 end
 
-
-function FixedEffectLinearMap{T}(fes::Vector{<:FixedEffect}, weights::AbstractVector, ::Type{Val{:lsmr}}) where {T}
-	sqrtw = convert(AbstractVector{T}, sqrt.(values(weights)))
-	colnorm = [colnorm!(zeros(T, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes]
-	caches = [cache!(zeros(T, length(sqrtw)), fe.interaction, sqrtw, scale, fe.refs) for (fe, scale) in zip(fes, colnorm)]
-	return FixedEffectLinearMap{T}(fes, sqrtw, colnorm, caches)
-end
-
-function colnorm!(fecoef::AbstractVector, refs::AbstractVector, interaction::AbstractVector, sqrtw::AbstractVector)
-	@inbounds @simd for i in eachindex(refs)
-		fecoef[refs[i]] += abs2(interaction[i] * sqrtw[i])
-	end
-	fecoef .= sqrt.(fecoef)
-end
-
-function cache!(y::AbstractVector, interaction::AbstractVector, sqrtw::AbstractVector, fecoef::AbstractVector, refs::AbstractVector)
-	@inbounds @simd for i in eachindex(y)
-		y[i] = interaction[i] * sqrtw[i] / fecoef[refs[i]]
-	end
-	return y
-end
-
 LinearAlgebra.adjoint(fem::FixedEffectLinearMap) = Adjoint(fem)
 
 function Base.size(fem::FixedEffectLinearMap, dim::Integer)
 	(dim == 1) ? length(fem.fes[1].refs) : (dim == 2) ? sum(fe.n for fe in fem.fes) : 1
 end
+
 Base.eltype(x::FixedEffectLinearMap{T}) where {T} = T
 
 function LinearAlgebra.mul!(y::AbstractVector, fem::FixedEffectLinearMap, 
@@ -104,12 +85,6 @@ function LinearAlgebra.mul!(y::AbstractVector, fem::FixedEffectLinearMap,
 	return y
 end
 
-function demean!(y::AbstractVector, α::Number, fecoef::AbstractVector, refs::AbstractVector, cache::AbstractVector)
-	@simd ivdep for i in eachindex(y)
-		@inbounds y[i] += α * fecoef[refs[i]] * cache[i]
-	end
-end
-
 function LinearAlgebra.mul!(fecoefs::FixedEffectCoefficients, Cfem::Adjoint{T, FixedEffectLinearMap{T}},
 				y::AbstractVector, α::Number, β::Number) where {T}
 	fem = adjoint(Cfem)
@@ -119,12 +94,3 @@ function LinearAlgebra.mul!(fecoefs::FixedEffectCoefficients, Cfem::Adjoint{T, F
 	end
 	return fecoefs
 end
-
-function mean!(fecoef::AbstractVector, refs::AbstractVector, α::Number, y::AbstractVector, cache::AbstractVector)
-	@simd ivdep for i in eachindex(y)
-		@inbounds fecoef[refs[i]] += α * y[i] * cache[i]
-	end
-end
-
-
-
