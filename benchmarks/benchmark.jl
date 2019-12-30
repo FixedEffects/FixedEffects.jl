@@ -8,15 +8,10 @@ fes = [FixedEffect(id1), FixedEffect(id2)]
 x = rand(N)
 
 # simple problem
-X = deepcopy(x)
-@time solve_residuals!(X, fes; tol = 1e-6)
-#  0.807994 seconds (848 allocations: 311.411 MiB, 10.14% gc time)
-X = [x x x x x x x x x x]
-@time solve_residuals!(X, fes)
-#  6.610115 seconds (8.83 k allocations: 311.572 MiB, 1.54% gc time)
-X = [x x x x x x x x x x]
-@time solve_residuals!(X,fes, method = :lsmr_threads)
-#  5.120222 seconds (9.19 k allocations: 1.210 GiB, 8.59% gc time)
+@time solve_residuals!(deepcopy(x), fes)
+#   0.654833 seconds (1.99 k allocations: 390.841 MiB, 3.71% gc time)
+@time solve_residuals!([x x x x], fes)
+#   2.319452 seconds (7.71 k allocations: 620.016 MiB, 0.36% gc time)
 
 # More complicated problem
 N = 800000 # number of observations
@@ -27,16 +22,15 @@ pid = rand(1:M, N)
 fid = [rand(max(1, div(x, 8)-10):min(O, div(x, 8)+10)) for x in pid]
 x = rand(N)
 fes = [FixedEffect(pid), FixedEffect(fid)]
-@time solve_residuals!([x x x x], fes; double_precision = false)
-# 12.690011 seconds (191.26 k allocations: 67.887 MiB, 0.03% gc time)
-@time solve_residuals!([x x x x], fes, method = :lsmr_threads, maxiter = 300)
-# 10.660428 seconds (239.89 k allocations: 189.271 MiB, 0.80% gc time)
+@time solve_residuals!(deepcopy(x), fes; double_precision = false)
+# 2.239687 seconds (110.81 k allocations: 35.470 MiB)
+@time solve_residuals!(deepcopy(x), fes; maxiter = 300)
+# 3.681389 seconds (97.09 k allocations: 62.593 MiB)
 
-# cluster (381 iterations)
 @time solve_residuals!([x x x x], fes; double_precision = false)
-#  11.760708 seconds (292.08 k allocations: 51.847 MiB, 0.95% gc time)
-@time solve_residuals!([x x x x], fes, method = :lsmr_gpu, double_precision = false)
-#  2.342490 seconds (1.15 M allocations: 90.584 MiB, 5.05% gc time)
+# 5.253745 seconds (285.98 k allocations: 184.213 MiB, 0.55% gc time)
 
+@time solve_residuals!([x x x x], fes; maxiter = 300)
+# 9.889438 seconds (225.38 k allocations: 311.964 MiB, 0.33% gc time)
 
 

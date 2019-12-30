@@ -23,7 +23,7 @@ end
 Returns ``y_i - X_i'\\beta`` where ``\\beta = argmin_{b} \\sum_i y_i - X_i'b``, where `X` denotes the matrix of fixed effects `fes`.
 
 ### Arguments
-* `y` : A `AbstractVector` or an `AbstractMatrix`
+* `y` : A `AbstractVector` or A `AbstractMatrix`
 * `fes`: A `Vector{<:FixedEffect}`
 * `w`: A vector of weights, i.e. `AbstractWeights`
 * `method` : A `Symbol` for the method. Default is :cpu. The option :gpu requires `CuArrays` (in this case, it is recommanded to use the option `double_precision = false`).
@@ -68,6 +68,8 @@ Returns ``\\beta = argmin_{b} \\sum_i w_i(y_i - X_i'b)`` where `X` denotes the m
 * `double_precision::Bool`: Should the demeaning operation use Float64 rather than Float32? Default to true.
 * `tol` : Tolerance. Default to 1e-8 if `double_precision = true`, 1e-6 otherwise.
 * `maxiter` : Maximum number of iterations
+* `nthreads` : Number of threads
+
 
 ### Returns
 * ``\\beta`` : Solution of the least square problem
