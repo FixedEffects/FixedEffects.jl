@@ -1,6 +1,6 @@
 name = "FixedEffects"
 uuid = "c8885935-8500-56a7-9867-7708b20db0eb"
-version = "0.6.1"
+version = "0.7.0"
 
 [deps]
 CUDAapi = "3895d2a7-ec45-59b8-82bb-cfc6a382f9b3"
@@ -13,7 +13,7 @@ Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 
 [compat]
-CUDAapi = "1.1, 1.2, 2.0"
+CUDAapi = "1.1, 1.2, 2"
 CategoricalArrays = "0"
 CuArrays = "1"
 FillArrays = "0"

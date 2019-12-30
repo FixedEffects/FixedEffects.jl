@@ -31,21 +31,21 @@ CuArrays.cu(T::Type, w::AbstractVector) = CuVector{T}(w)
 
 const N_THREADS = 256
 
-function FixedEffectLinearMap{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:lsmr_gpu}}) where {T}
+function FixedEffectLinearMap{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:gpu}}) where {T}
 	fes = [cu(T, fe) for fe in fes]
 	sqrtw = cu(T, sqrt.(values(weights)))
-	colnorm = [colnorm!(cuzeros(T, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes]
-	caches = [cache!(cuzeros(T, length(sqrtw)), fe.interaction, sqrtw, scale, fe.refs) for (fe, scale) in zip(fes, colnorm)]
+	colnorm = [_colnorm!(cuzeros(T, fe.n), fe.refs, fe.interaction, sqrtw) for fe in fes]
+	caches = [_cache!(cuzeros(T, length(sqrtw)), fe.interaction, sqrtw, scale, fe.refs) for (fe, scale) in zip(fes, colnorm)]
 	return FixedEffectLinearMap{T}(fes, sqrtw, colnorm, caches)
 end
 
-function colnorm!(fecoef::CuVector, refs::CuVector, y::CuVector, sqrtw::CuVector)
+function _colnorm!(fecoef::CuVector, refs::CuVector, y::CuVector, sqrtw::CuVector)
 	nblocks = cld(length(refs), N_THREADS) 
-	@cuda threads=N_THREADS blocks=nblocks colnorm!_kernel!(fecoef, refs, y, sqrtw)
+	@cuda threads=N_THREADS blocks=nblocks _colnorm!_kernel!(fecoef, refs, y, sqrtw)
 	fecoef .= sqrt.(fecoef)
 end
 
-function colnorm!_kernel!(fecoef, refs, y, sqrtw)
+function _colnorm!_kernel!(fecoef, refs, y, sqrtw)
 	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
 	@inbounds for i = index:stride:length(y)
@@ -53,13 +53,13 @@ function colnorm!_kernel!(fecoef, refs, y, sqrtw)
 	end
 end
 
-function cache!(y::CuVector, interaction::CuVector , sqrtw::CuVector, fecoef::CuVector, refs::CuVector)
+function _cache!(y::CuVector, interaction::CuVector , sqrtw::CuVector, fecoef::CuVector, refs::CuVector)
 	nblocks = cld(length(y), N_THREADS) 
-	@cuda threads=N_THREADS blocks=nblocks cache_kernel!(y, interaction, sqrtw, fecoef, refs)
+	@cuda threads=N_THREADS blocks=nblocks _cache_kernel!(y, interaction, sqrtw, fecoef, refs)
 	return y
 end
 
-function cache_kernel!(y, interaction, sqrtw, fecoef, refs)
+function _cache_kernel!(y, interaction, sqrtw, fecoef, refs)
 	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
 	@inbounds for i = index:stride:length(y)
@@ -98,7 +98,8 @@ end
 ## Implement AbstractFixedEffectSolver interface
 ##
 ##############################################################################
-struct FixedEffectSolverLSMRGPU{T} <: AbstractFixedEffectSolver{T}
+
+struct FixedEffectSolverGPU{T} <: AbstractFixedEffectSolver{T}
 	m::FixedEffectLinearMap{T}
 	b::CuVector{T}
 	r::CuVector{T}
@@ -110,8 +111,8 @@ struct FixedEffectSolverLSMRGPU{T} <: AbstractFixedEffectSolver{T}
 	fes::Vector{<:FixedEffect}
 end
 	
-function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:lsmr_gpu}}) where {T}
-	m = FixedEffectLinearMap{T}(fes, weights, Val{:lsmr_gpu})
+function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:gpu}}) where {T}
+	m = FixedEffectLinearMap{T}(fes, weights, Val{:gpu})
 	b = cuzeros(T, length(weights))
 	r = cuzeros(T, length(weights))
 	x = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
@@ -119,10 +120,10 @@ function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::Abstr
 	h = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
 	hbar = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
 	tmp = zeros(T, length(weights))
-	FixedEffectSolverLSMRGPU(m, b, r, x, v, h, hbar, tmp, fes)
+	FixedEffectSolverGPU(m, b, r, x, v, h, hbar, tmp, fes)
 end
 
-function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverLSMRGPU{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
+function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverGPU{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	copyto!(feM.tmp, r)
 	copyto!(feM.r, feM.tmp)
 	feM.r .*=  feM.m.sqrtw
@@ -136,7 +137,7 @@ function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverLSMRGPU{T}; t
 	return r, div(ch.mvps, 2), ch.isconverged
 end
 
-function solve_residuals!(X::AbstractMatrix, feM::FixedEffectSolverLSMRGPU; kwargs...)
+function solve_residuals!(X::AbstractMatrix, feM::FixedEffectSolverGPU; kwargs...)
 	iterations = Int[]
 	convergeds = Bool[]
 	for j in 1:size(X, 2)
@@ -147,7 +148,7 @@ function solve_residuals!(X::AbstractMatrix, feM::FixedEffectSolverLSMRGPU; kwar
 	return X, iterations, convergeds
 end
 
-function solve_coefficients!(r::AbstractVector, feM::FixedEffectSolverLSMRGPU{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
+function solve_coefficients!(r::AbstractVector, feM::FixedEffectSolverGPU{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	copyto!(feM.tmp, r)
 	copyto!(feM.b, feM.tmp)
 	feM.b .*= feM.m.sqrtw
