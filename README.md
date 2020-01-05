@@ -4,9 +4,9 @@
 
 This package solves least squares problem with high dimensional fixed effects. For a matrix `D` of high dimensional fixed effects, it finds `b` and `ϵ` such that `y = D'b + ϵ` with `E[Dϵ] = 0`. 
 
-It is the back end for the package [FixedEffectModels.jl](https://github.com/matthieugomez/FixedEffectModels.jl), that estimates more general linears model with high-dimensional fixed effect.
+It is the back end for the package [FixedEffectModels.jl](https://github.com/matthieugomez/FixedEffectModels.jl), that estimates linear models with high-dimensional fixed effect.
 
- The package defines two functions `solve_coefficients`, that returns the coefficients `b`, and `solve_residuals`, that returns the residuals `ϵ`. See `?solve_residuals!` or `?solve_coefficients!` for the full syntax.
+ The package defines two functions `solve_coefficients!`, that returns the coefficients `b`, and `solve_residuals!`, that returns the residuals `ϵ`. See the documentation `?solve_residuals!` or `?solve_coefficients!`.
 
 
 ```julia
@@ -18,7 +18,7 @@ p2 = FixedEffect(repeat(1:2, outer = 5), repeat(1:2, inner = 5))
 # define interacted fixed effects
 p3 = FixedEffect(repeat(1:5, outer = 2), interaction = rand(10))
 
-# partial out a vector
+# find residuals
 x = rand(10)
 solve_residuals!(x, [p1, p2])
 
