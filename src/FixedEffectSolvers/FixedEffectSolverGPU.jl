@@ -16,7 +16,7 @@ function CuArrays.cu(T::Type, fe::FixedEffect)
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
 end
 CuArrays.cu(T::Type, w::Union{Fill, Ones, Zeros}) = fill!(CuVector{T}(undef, length(w)), w[1])
-CuArrays.cu(T::Type, w::AbstractVector) = CuVector{T}(w)
+CuArrays.cu(T::Type, w::AbstractVector) = CuVector{T}(convert(Vector{T}, w))
 
 ##############################################################################
 ##
@@ -34,45 +34,42 @@ CuArrays.cu(T::Type, w::AbstractVector) = CuVector{T}(w)
 
 mutable struct FixedEffectLinearMapGPU{T}
 	fes::Vector{<:FixedEffect}
-	colnorm::Vector{<:AbstractVector}
+	scales::Vector{<:AbstractVector}
 	caches::Vector{<:AbstractVector}
 	nthreads::Int
 end
 
-function FixedEffectLinearMapGPU{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:gpu}}) where {T}
-	nthreads = 256
+function FixedEffectLinearMapGPU{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:gpu}}) where {T}
 	fes = [cu(T, fe) for fe in fes]
-	sqrtw = cu(T, sqrt.(values(weights)))
-	colnorm = [_colnorm!(cuzeros(T, fe.n), fe.refs, fe.interaction, sqrtw, nthreads) for fe in fes]
-	caches = [_cache!(cuzeros(T, length(sqrtw)), fe.interaction, sqrtw, scale, fe.refs, nthreads) for (fe, scale) in zip(fes, colnorm)]
-	return FixedEffectLinearMapGPU{T}(fes, colnorm, caches, nthreads)
+	scales = [cuzeros(T, fe.n) for fe in fes]
+	caches = [cuzeros(T, length(fes[1].interaction)) for fe in fes]
+	return FixedEffectLinearMapGPU{T}(fes, scales, caches, 256)
 end
 
-function _colnorm!(fecoef::CuVector, refs::CuVector, y::CuVector, sqrtw::CuVector, nthreads::Integer)
+function scale!(scale::CuVector, refs::CuVector, interaction::CuVector, sqrtw::CuVector, nthreads::Integer)
 	nblocks = cld(length(refs), nthreads) 
-	@cuda threads=nthreads blocks=nblocks _colnorm!_kernel!(fecoef, refs, y, sqrtw)
-	fecoef .= sqrt.(fecoef)
+	@cuda threads=nthreads blocks=nblocks scale!_kernel!(scale, refs, interaction, sqrtw)
+	scale .= sqrt.(scale)
 end
 
-function _colnorm!_kernel!(fecoef, refs, y, sqrtw)
+function scale!_kernel!(scale, refs, interaction, sqrtw)
 	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
-	@inbounds for i = index:stride:length(y)
-		CuArrays.CUDAnative.atomic_add!(pointer(fecoef, refs[i]), abs2(y[i] * sqrtw[i]))
+	@inbounds for i = index:stride:length(interaction)
+		CuArrays.CUDAnative.atomic_add!(pointer(scale, refs[i]), abs2(interaction[i] * sqrtw[i]))
 	end
 end
 
-function _cache!(y::CuVector, interaction::CuVector , sqrtw::CuVector, fecoef::CuVector, refs::CuVector, nthreads::Integer)
-	nblocks = cld(length(y), nthreads) 
-	@cuda threads=nthreads blocks=nblocks _cache_kernel!(y, interaction, sqrtw, fecoef, refs)
-	return y
+function cache!(cache::CuVector, refs::CuVector, interaction::CuVector, sqrtw::CuVector, scale::CuVector, nthreads::Integer)
+	nblocks = cld(length(cache), nthreads) 
+	@cuda threads=nthreads blocks=nblocks cache!_kernel!(cache, refs, interaction, sqrtw, scale)
 end
 
-function _cache_kernel!(y, interaction, sqrtw, fecoef, refs)
+function cache!_kernel!(cache, refs, interaction, sqrtw, scale)
 	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
-	@inbounds for i = index:stride:length(y)
-		y[i] += interaction[i] * sqrtw[i] / fecoef[refs[i]]
+	@inbounds for i = index:stride:length(cache)
+		cache[i] += interaction[i] * sqrtw[i] / scale[refs[i]]
 	end
 end
 
@@ -90,18 +87,18 @@ function LinearAlgebra.mul!(fecoefs::FixedEffectCoefficients,
 	fem = adjoint(Cfem)
 	rmul!(fecoefs, β)
 	for (fecoef, fe, cache) in zip(fecoefs.x, fem.fes, fem.caches)
-		_mean!(fecoef, fe.refs, α, y, cache, fem.nthreads)
+		gather!(fecoef, fe.refs, α, y, cache, fem.nthreads)
 	end
 	return fecoefs
 end
 
 
-function _mean!(fecoef::CuVector, refs::CuVector, α::Number, y::CuVector, cache::CuVector, nthreads::Integer)
+function gather!(fecoef::CuVector, refs::CuVector, α::Number, y::CuVector, cache::CuVector, nthreads::Integer)
 	nblocks = cld(length(y), nthreads) 
-	@cuda threads=nthreads blocks=nblocks _mean_kernel!(fecoef, refs, α, y, cache)    
+	@cuda threads=nthreads blocks=nblocks gather_kernel!(fecoef, refs, α, y, cache)    
 end
 
-function _mean_kernel!(fecoef, refs, α, y, cache)
+function gather_kernel!(fecoef, refs, α, y, cache)
 	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
 	@inbounds for i = index:stride:length(y)
@@ -109,22 +106,21 @@ function _mean_kernel!(fecoef, refs, α, y, cache)
 	end
 end
 
-
 function LinearAlgebra.mul!(y::AbstractVector, fem::FixedEffectLinearMapGPU, 
 			  fecoefs::FixedEffectCoefficients, α::Number, β::Number)
 	rmul!(y, β)
 	for (fecoef, fe, cache) in zip(fecoefs.x, fem.fes, fem.caches)
-		_demean!(y, α, fecoef, fe.refs, cache, fem.nthreads)
+		scatter!(y, α, fecoef, fe.refs, cache, fem.nthreads)
 	end
 	return y
 end
 
-function _demean!(y::CuVector, α::Number, fecoef::CuVector, refs::CuVector, cache::CuVector, nthreads::Integer)
+function scatter!(y::CuVector, α::Number, fecoef::CuVector, refs::CuVector, cache::CuVector, nthreads::Integer)
 	nblocks = cld(length(y), nthreads)
-	@cuda threads=nthreads blocks=nblocks _demean_kernel!(y, α, fecoef, refs, cache)
+	@cuda threads=nthreads blocks=nblocks scatter_kernel!(y, α, fecoef, refs, cache)
 end
 
-function _demean_kernel!(y, α, fecoef, refs, cache)
+function scatter_kernel!(y, α, fecoef, refs, cache)
 	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
 	@inbounds for i = index:stride:length(y)
@@ -138,7 +134,7 @@ end
 ##
 ##############################################################################
 
-struct FixedEffectSolverGPU{T} <: AbstractFixedEffectSolver{T}
+mutable struct FixedEffectSolverGPU{T} <: AbstractFixedEffectSolver{T}
 	m::FixedEffectLinearMapGPU{T}
 	sqrtw::CuVector{T}
 	b::CuVector{T}
@@ -152,8 +148,7 @@ struct FixedEffectSolverGPU{T} <: AbstractFixedEffectSolver{T}
 end
 	
 function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:gpu}}) where {T}
-	m = FixedEffectLinearMapGPU{T}(fes, weights, Val{:gpu})
-	sqrtw = cu(T, sqrt.(values(weights)))
+	m = FixedEffectLinearMapGPU{T}(fes, Val{:gpu})
 	b = cuzeros(T, length(weights))
 	r = cuzeros(T, length(weights))
 	x = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
@@ -161,13 +156,26 @@ function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::Abstr
 	h = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
 	hbar = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
 	tmp = zeros(T, length(weights))
-	FixedEffectSolverGPU{T}(m, sqrtw, b, r, x, v, h, hbar, tmp, fes)
+	update_weights!(FixedEffectSolverGPU{T}(m, cuzeros(T, length(weights)), b, r, x, v, h, hbar, tmp, fes), weights)
+end
+
+
+function update_weights!(feM::FixedEffectSolverGPU{T}, weights::AbstractWeights) where {T}
+	sqrtw = cu(T, sqrt.(weights))
+	for (scale, fe) in zip(feM.m.scales, feM.m.fes)
+		scale!(scale, fe.refs, fe.interaction, sqrtw, 256)
+	end
+	for (cache, scale, fe) in zip(feM.m.caches, feM.m.scales, feM.m.fes)
+		cache!(cache, fe.refs, fe.interaction, sqrtw, scale, 256)
+	end	
+	feM.sqrtw = sqrtw
+	return feM
 end
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverGPU{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	copyto!(feM.tmp, r)
 	copyto!(feM.r, feM.tmp)
-	feM.r .*=  feM.sqrtw
+	feM.r .*= feM.sqrtw
 	copyto!(feM.b, feM.r)
 	fill!(feM.x, 0.0)
 	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
@@ -195,7 +203,7 @@ function solve_coefficients!(r::AbstractVector, feM::FixedEffectSolverGPU{T}; to
 	feM.b .*= feM.sqrtw
 	fill!(feM.x, 0.0)
 	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
-	for (x, scale) in zip(feM.x.x, feM.m.colnorm)
+	for (x, scale) in zip(feM.x.x, feM.m.scales)
 		x ./=  scale
 	end
 	x = Vector{eltype(r)}[collect(x) for x in feM.x.x]

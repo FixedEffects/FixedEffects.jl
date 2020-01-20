@@ -1,4 +1,4 @@
-using Test, FixedEffects
+using Test, StatsBase, FixedEffects
 
 
 p1 = repeat(1:5, inner = 2)
@@ -18,7 +18,12 @@ c_lsmr,_,_ = solve_coefficients!(deepcopy(x), fes)
 (c, iter, conv) = solve_residuals!([x x], fes)
 
 
-
+# test update_weights
+weights = ones(10)
+feM = FixedEffects.AbstractFixedEffectSolver{Float64}(fes, Weights(weights), Val{:cpu})
+weights = Weights([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+FixedEffects.update_weights!(feM, weights) 
+solve_residuals!(deepcopy(x), feM)[1] ≈ solve_residuals!(deepcopy(x), fes, weights)[1]
 
 
 
