@@ -13,32 +13,31 @@
 ##############################################################################
 mutable struct FixedEffectLinearMapCPU{T}
 	fes::Vector{<:FixedEffect}
-	colnorm::Vector{<:AbstractVector}
+	scales::Vector{<:AbstractVector}
 	caches::Vector{<:AbstractVector}
 	tmp::Vector{Union{Nothing, <:AbstractVector}}
 	nthreads::Int
 end
 
-function FixedEffectLinearMapCPU{T}(fes::Vector{<:FixedEffect}, weights::AbstractVector, ::Type{Val{:cpu}}) where {T}
+function FixedEffectLinearMapCPU{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:cpu}}) where {T}
 	nthreads = Threads.nthreads()
-	colnorm = [_colnorm!(zeros(T, fe.n), fe.refs, fe.interaction, weights) for fe in fes]
-	caches = [_cache!(zeros(T, length(weights)), fe.interaction, weights, scale, fe.refs) for (fe, scale) in zip(fes, colnorm)]
+	scales = [zeros(T, fe.n) for fe in fes]
+	caches = [zeros(T, length(fes[1].interaction)) for fe in fes]
 	fecoefs = [[zeros(T, fe.n) for _ in 1:nthreads] for fe in fes]
-	return FixedEffectLinearMapCPU{T}(fes, colnorm, caches, fecoefs, nthreads)
+	return FixedEffectLinearMapCPU{T}(fes, scales, caches, fecoefs, nthreads)
 end
 
-function _colnorm!(fecoef::AbstractVector, refs::AbstractVector, interaction::AbstractVector, weights::AbstractVector)
+function scale!(scale::AbstractVector, refs::AbstractVector, interaction::AbstractVector, weights::AbstractVector)
 	@inbounds @simd for i in eachindex(refs)
-		fecoef[refs[i]] += abs2(interaction[i]) * weights[i]
+		scale[refs[i]] += abs2(interaction[i]) * weights[i]
 	end
-	fecoef .= sqrt.(fecoef)
+	scale .= sqrt.(scale)
 end
 
-function _cache!(y::AbstractVector, interaction::AbstractVector, weights::AbstractVector, fecoef::AbstractVector, refs::AbstractVector)
-	@inbounds @simd for i in eachindex(y)
-		y[i] = interaction[i] * sqrt(weights[i]) / fecoef[refs[i]]
+function cache!(cache::AbstractVector, refs::AbstractVector, interaction::AbstractVector, weights::AbstractVector, scale::AbstractVector)
+	@inbounds @simd for i in eachindex(cache)
+		cache[i] = interaction[i] * sqrt(weights[i]) / scale[refs[i]]
 	end
-	return y
 end
 
 LinearAlgebra.adjoint(fem::FixedEffectLinearMapCPU) = Adjoint(fem)
@@ -56,24 +55,24 @@ function LinearAlgebra.mul!(fecoefs::FixedEffectCoefficients,
 	fem = adjoint(Cfem)
 	rmul!(fecoefs, β)
 	for (fecoef, fe, cache, tmp) in zip(fecoefs.x, fem.fes, fem.caches, fem.tmp)
-		_mean!(fecoef, fe.refs, α, y, cache, tmp, fem.nthreads)
+		gather!(fecoef, fe.refs, α, y, cache, tmp, fem.nthreads)
 	end
 	return fecoefs
 end
 
-function _mean!(fecoef::AbstractVector, refs::AbstractVector, α::Number, y::AbstractVector, cache::AbstractVector, tmp::AbstractVector, nthreads::Integer)
+function gather!(fecoef::AbstractVector, refs::AbstractVector, α::Number, y::AbstractVector, cache::AbstractVector, tmp::AbstractVector, nthreads::Integer)
 	n_each = div(length(y), nthreads)
 	Threads.@threads for t in 1:nthreads
 		fill!(tmp[t], 0.0)
-		_mean!(tmp[t], refs, α, y, cache, ((t - 1) * n_each + 1):(t * n_each))
+		gather!(tmp[t], refs, α, y, cache, ((t - 1) * n_each + 1):(t * n_each))
 	end
 	for x in tmp
 		fecoef .+= x
 	end
-	_mean!(fecoef, refs, α, y, cache, (nthreads * n_each + 1):length(y))
+	gather!(fecoef, refs, α, y, cache, (nthreads * n_each + 1):length(y))
 end
 
-function _mean!(fecoef::AbstractVector, refs::AbstractVector, α::Number, y::AbstractVector, cache::AbstractVector, irange::AbstractRange)
+function gather!(fecoef::AbstractVector, refs::AbstractVector, α::Number, y::AbstractVector, cache::AbstractVector, irange::AbstractRange)
 	@inbounds @simd for i in irange
 		fecoef[refs[i]] += α * y[i] * cache[i]
 	end
@@ -83,20 +82,20 @@ function LinearAlgebra.mul!(y::AbstractVector, fem::FixedEffectLinearMapCPU,
 			  fecoefs::FixedEffectCoefficients, α::Number, β::Number)
 	rmul!(y, β)
 	for (fecoef, fe, cache) in zip(fecoefs.x, fem.fes, fem.caches)
-		_demean!(y, α, fecoef, fe.refs, cache, fem.nthreads)
+		scatter!(y, α, fecoef, fe.refs, cache, fem.nthreads)
 	end
 	return y
 end
 
-function _demean!(y::AbstractVector, α::Number, fecoef::AbstractVector, refs::AbstractVector, cache::AbstractVector, nthreads::Integer)
+function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector, refs::AbstractVector, cache::AbstractVector, nthreads::Integer)
 	n_each = div(length(y), nthreads)
 	Threads.@threads for t in 1:nthreads
-		_demean!(y, α, fecoef, refs, cache, ((t - 1) * n_each + 1):(t * n_each))
+		scatter!(y, α, fecoef, refs, cache, ((t - 1) * n_each + 1):(t * n_each))
 	end
-	_demean!(y, α, fecoef, refs, cache, (nthreads * n_each + 1):length(y))
+	scatter!(y, α, fecoef, refs, cache, (nthreads * n_each + 1):length(y))
 end
 
-function _demean!(y::AbstractVector, α::Number, fecoef::AbstractVector, refs::AbstractVector, cache::AbstractVector, irange::AbstractRange)
+function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector, refs::AbstractVector, cache::AbstractVector, irange::AbstractRange)
 	@inbounds @simd for i in irange
 		y[i] += α * fecoef[refs[i]] * cache[i]
 	end
@@ -108,7 +107,7 @@ end
 ##
 ##############################################################################
 
-struct FixedEffectSolverCPU{T} <: AbstractFixedEffectSolver{T}
+mutable struct FixedEffectSolverCPU{T} <: AbstractFixedEffectSolver{T}
 	m::FixedEffectLinearMapCPU{T}
 	weights::AbstractVector
 	b::AbstractVector{T}
@@ -120,14 +119,25 @@ struct FixedEffectSolverCPU{T} <: AbstractFixedEffectSolver{T}
 end
 
 function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:cpu}}) where {T}
-	m = FixedEffectLinearMapCPU{T}(fes, weights, Val{:cpu})
+	m = FixedEffectLinearMapCPU{T}(fes, Val{:cpu})
 	b = zeros(T, length(weights))
 	r = zeros(T, length(weights))
 	x = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
 	v = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
 	h = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
 	hbar = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
-	return FixedEffectSolverCPU(m, weights, b, r, x, v, h, hbar)
+	return update_weights!(FixedEffectSolverCPU(m, weights, b, r, x, v, h, hbar), weights)
+end
+
+function update_weights!(feM::FixedEffectSolverCPU, weights::AbstractWeights)
+	for (scale, fe) in zip(feM.m.scales, feM.m.fes)
+		scale!(scale, fe.refs, fe.interaction, weights)
+	end
+	for (cache, scale, fe) in zip(feM.m.caches, feM.m.scales, feM.m.fes)
+		cache!(cache, fe.refs, fe.interaction, weights, scale)
+	end
+	feM.weights = weights
+	return feM
 end
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverCPU{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
@@ -158,7 +168,7 @@ function solve_coefficients!(r::AbstractVector, feM::FixedEffectSolverCPU{T}; to
 	feM.b .*=  sqrt.(feM.weights)
 	fill!(feM.x, 0)
 	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
-	for (x, scale) in zip(feM.x.x, feM.m.colnorm)
+	for (x, scale) in zip(feM.x.x, feM.m.scales)
 		x ./=  scale
 	end
 	x = Vector{eltype(r)}[x for x in feM.x.x]
