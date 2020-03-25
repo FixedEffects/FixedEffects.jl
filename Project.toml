@@ -15,7 +15,7 @@ StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 [compat]
 CUDAapi = "1.1, 1.2, 2, 3, 4"
 CategoricalArrays = "0"
-CuArrays = "1"
+CuArrays = "1, 2.0"
 FillArrays = "0"
 Reexport = "0"
 StatsBase = "0"
