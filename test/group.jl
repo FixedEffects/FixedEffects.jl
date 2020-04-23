@@ -5,15 +5,10 @@ v2 = [1, 2, 3, 1]
 v3 = [missing, 1, 1, missing]
 
 @test levels(group(v1)) == [1, 2]
-@test group(v1).refs == [1, 0, 1, 2]
-
 @test group(v2) == categorical(v2)
-
 @test levels(group(v3)) ==  [1]
-@test group(v3).refs ==  [0, 1, 1, 0]
-
 @test levels(group(v1, v2, v3)) == [1]
-@test group(group(v1, v2, v3)).refs == [0, 0, 1, 0]
+
 
 
 show(FixedEffect(v1, v2))
