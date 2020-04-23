@@ -139,10 +139,10 @@ mutable struct FixedEffectSolverGPU{T} <: AbstractFixedEffectSolver{T}
 	sqrtw::CuVector{T}
 	b::CuVector{T}
 	r::CuVector{T}
-	x::FixedEffectCoefficients{T}
-	v::FixedEffectCoefficients{T}
-	h::FixedEffectCoefficients{T}
-	hbar::FixedEffectCoefficients{T}
+	x::FixedEffectCoefficients{<: AbstractVector{T}}
+	v::FixedEffectCoefficients{<: AbstractVector{T}}
+	h::FixedEffectCoefficients{<: AbstractVector{T}}
+	hbar::FixedEffectCoefficients{<: AbstractVector{T}}
 	tmp::Vector{T} # used to convert AbstractVector to Vector{T}
 	fes::Vector{<:FixedEffect}
 end

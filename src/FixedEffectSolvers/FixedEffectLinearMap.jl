@@ -11,11 +11,11 @@
 ##
 ##############################################################################
 
-struct FixedEffectCoefficients{T}
-	x::Vector{<:AbstractVector{T}}
+struct FixedEffectCoefficients{U <: AbstractVector}
+	x::Vector{U}
 end
 
-Base.eltype(fecoef::FixedEffectCoefficients{T}) where {T} = T
+Base.eltype(fecoef::FixedEffectCoefficients{U}) where {U} = eltype(U)
 Base.length(fecoef::FixedEffectCoefficients) = sum(length(x) for x in fecoef.x)
 LinearAlgebra.norm(fecoef::FixedEffectCoefficients) = sqrt(sum(sum(abs2, x) for x in fecoef.x))
 
