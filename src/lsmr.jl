@@ -127,7 +127,7 @@ function lsmr!(x, A, b, v, h, hbar;
             s = β / ρ
             θnew = s * α
             αbar = c * α
-        
+
             # Use a plane rotation (Qbar_i) to turn R_i^T to R_i^bar.
             ρbarold = ρbar
             ζold = ζ
@@ -145,7 +145,7 @@ function lsmr!(x, A, b, v, h, hbar;
             axpy!(ζ / (ρ * ρbar), hbar, x)
             rmul!(h, - θnew / ρ)
             axpy!(1, v, h)
-        
+
             ##############################################################################
             ##
             ## Estimate of ||r||

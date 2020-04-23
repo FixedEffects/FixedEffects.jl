@@ -31,12 +31,15 @@ function scale!(scale::AbstractVector, refs::AbstractVector, interaction::Abstra
 	@inbounds @simd for i in eachindex(refs)
 		scale[refs[i]] += abs2(interaction[i]) * weights[i]
 	end
-	scale .= sqrt.(scale)
+	# Case of interaction variatble equal to zero in the category (issue #97)
+	for i in 1:length(scale)
+	    scale[i] = scale[i] > 0.0 ? (1.0 / sqrt(scale[i])) : 0.0
+	end
 end
 
 function cache!(cache::AbstractVector, refs::AbstractVector, interaction::AbstractVector, weights::AbstractVector, scale::AbstractVector)
 	@inbounds @simd for i in eachindex(cache)
-		cache[i] = interaction[i] * sqrt(weights[i]) / scale[refs[i]]
+		cache[i] = interaction[i] * sqrt(weights[i]) * scale[refs[i]]
 	end
 end
 
@@ -112,10 +115,10 @@ mutable struct FixedEffectSolverCPU{T} <: AbstractFixedEffectSolver{T}
 	weights::AbstractVector
 	b::AbstractVector{T}
 	r::AbstractVector{T}
-	x::FixedEffectCoefficients{T}
-	v::FixedEffectCoefficients{T}
-	h::FixedEffectCoefficients{T}
-	hbar::FixedEffectCoefficients{T}
+	x::FixedEffectCoefficients{<: AbstractVector{T}}
+	v::FixedEffectCoefficients{<: AbstractVector{T}}
+	h::FixedEffectCoefficients{<: AbstractVector{T}}
+	hbar::FixedEffectCoefficients{<: AbstractVector{T}}
 end
 
 function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:cpu}}) where {T}
@@ -169,7 +172,7 @@ function solve_coefficients!(r::AbstractVector, feM::FixedEffectSolverCPU{T}; to
 	fill!(feM.x, 0)
 	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
 	for (x, scale) in zip(feM.x.x, feM.m.scales)
-		x ./=  scale
+		x .*=  scale
 	end
 	x = Vector{eltype(r)}[x for x in feM.x.x]
 	full(normalize!(x, feM.m.fes; tol = tol, maxiter = maxiter), feM.m.fes), div(ch.mvps, 2), ch.isconverged

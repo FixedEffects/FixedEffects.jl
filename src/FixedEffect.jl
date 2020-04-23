@@ -36,7 +36,7 @@ function Base.show(io::IO, fe::FixedEffect)
     println(io, "             ", fe.interaction[1:min(5, length(fe.interaction))], "...")
 end
 
-Base.ismissing(fe::FixedEffect) = any(fe.refs .== 0) | ismissing(fe.interaction)
+Base.ismissing(fe::FixedEffect) = any(x -> x == 0, fe.refs) | ismissing(fe.interaction)
 Base.length(fe::FixedEffect) = length(fe.refs)
 Base.eltype(fe::FixedEffect) = eltype(I)
 
