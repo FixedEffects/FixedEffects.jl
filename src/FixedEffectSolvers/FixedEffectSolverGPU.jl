@@ -1,5 +1,6 @@
-CUDA.allowscalar(false)
 using .CUDA
+
+CUDA.allowscalar(false)
 ##############################################################################
 ##
 ## Conversion FixedEffect between CPU and GPU
