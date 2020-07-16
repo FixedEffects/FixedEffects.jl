@@ -213,7 +213,7 @@ function solve_coefficients!(r::AbstractVector, feM::FixedEffectSolverGPU{T}; to
 	fill!(feM.x, 0.0)
 	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
 	for (x, scale) in zip(feM.x.x, feM.m.scales)
-		x ./=  scale
+		x .*=  scale
 	end
 	x = Vector{eltype(r)}[collect(x) for x in feM.x.x]
 	full(normalize!(x, feM.fes; tol = tol, maxiter = maxiter), feM.fes), div(ch.mvps, 2), ch.isconverged
