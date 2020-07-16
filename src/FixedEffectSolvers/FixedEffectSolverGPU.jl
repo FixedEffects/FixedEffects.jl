@@ -6,7 +6,7 @@ CUDA.allowscalar(false)
 ##
 ##############################################################################
 
-# https://github.com/JuliaGPU/CuArrays.jl/issues/306
+# https://github.com/JuliaGPU/CUDA.jl/issues/142
 cuzeros(T::Type, n::Integer) = fill!(CuVector{T}(undef, n), zero(T))
 function CUDA.cu(T::Type, fe::FixedEffect)
 	refs = CuArray(fe.refs)

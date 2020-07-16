@@ -28,7 +28,7 @@ solve_residuals!(deepcopy(x), feM)[1] ≈ solve_residuals!(deepcopy(x), fes, wei
 
 
 method_s = [:cpu]
-if FixedEffects.has_cuarrays()
+if FixedEffects.has_CUDA()
 	push!(method_s, :gpu)
 end
 for method in method_s

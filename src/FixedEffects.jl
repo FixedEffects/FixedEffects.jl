@@ -25,11 +25,11 @@ include("FixedEffectSolvers/FixedEffectLinearMap.jl")
 include("FixedEffectSolvers/FixedEffectSolverCPU.jl")
 
 
-has_cuarrays() = false
+has_CUDA() = false
 function __init__()
 	    @require CUDA="052768ef-5323-5732-b1bb-66c8b64840ba" begin
 	    if CUDA.functional()
-		    has_cuarrays() = true
+		    has_CUDA() = true
 	    	include("FixedEffectSolvers/FixedEffectSolverGPU.jl")
 	    end
 	end
