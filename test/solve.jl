@@ -1,4 +1,4 @@
-using Test, StatsBase, FixedEffects
+using Test, StatsBase, FixedEffects, CUDA
 
 
 p1 = repeat(1:5, inner = 2)
