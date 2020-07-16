@@ -11,19 +11,6 @@ using FillArrays
 using StatsBase
 using Requires
 
-##############################################################################
-##
-## Exported methods and types 
-##
-##############################################################################
-
-
-export 
-group,
-FixedEffect,
-AbstractFixedEffectSolver,
-solve_residuals!,
-solve_coefficients!
 
 
 ##############################################################################
@@ -45,5 +32,21 @@ function __init__()
 	    end
 	end
 end
+
+
+##############################################################################
+##
+## Exported methods and types 
+##
+##############################################################################
+
+
+export 
+group,
+FixedEffect,
+AbstractFixedEffectSolver,
+solve_residuals!,
+solve_coefficients!
+
 
 end  # module FixedEffects
