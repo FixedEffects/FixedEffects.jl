@@ -27,22 +27,6 @@ function FixedEffectLinearMapCPU{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:cpu}
 	return FixedEffectLinearMapCPU{T}(fes, scales, caches, fecoefs, nthreads)
 end
 
-function scale!(scale::AbstractVector, refs::AbstractVector, interaction::AbstractVector, weights::AbstractVector)
-	@inbounds @simd for i in eachindex(refs)
-		scale[refs[i]] += abs2(interaction[i]) * weights[i]
-	end
-	# Case of interaction variatble equal to zero in the category (issue #97)
-	for i in 1:length(scale)
-	    scale[i] = scale[i] > 0.0 ? (1.0 / sqrt(scale[i])) : 0.0
-	end
-end
-
-function cache!(cache::AbstractVector, refs::AbstractVector, interaction::AbstractVector, weights::AbstractVector, scale::AbstractVector)
-	@inbounds @simd for i in eachindex(cache)
-		cache[i] = interaction[i] * sqrt(weights[i]) * scale[refs[i]]
-	end
-end
-
 LinearAlgebra.adjoint(fem::FixedEffectLinearMapCPU) = Adjoint(fem)
 
 function Base.size(fem::FixedEffectLinearMapCPU, dim::Integer)
@@ -143,11 +127,28 @@ function update_weights!(feM::FixedEffectSolverCPU, weights::AbstractWeights)
 	return feM
 end
 
+
+function scale!(scale::AbstractVector, refs::AbstractVector, interaction::AbstractVector, weights::AbstractVector)
+	@inbounds @simd for i in eachindex(refs)
+		scale[refs[i]] += abs2(interaction[i]) * weights[i]
+	end
+	# Case of interaction variatble equal to zero in the category (issue #97)
+	for i in 1:length(scale)
+	    scale[i] = scale[i] > 0 ? (1 / sqrt(scale[i])) : 0.0
+	end
+end
+
+function cache!(cache::AbstractVector, refs::AbstractVector, interaction::AbstractVector, weights::AbstractVector, scale::AbstractVector)
+	@inbounds @simd for i in eachindex(cache)
+		cache[i] = interaction[i] * sqrt(weights[i]) * scale[refs[i]]
+	end
+end
+
 function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverCPU{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	copyto!(feM.r, r)
 	feM.r .*=  sqrt.(feM.weights)
-	fill!(feM.x, 0)
 	copyto!(feM.b, feM.r)
+	fill!(feM.x, 0)
 	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
 	mul!(feM.r, feM.m, feM.x, -1.0, 1.0)
 	feM.r ./=  sqrt.(feM.weights)
@@ -155,13 +156,19 @@ function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverCPU{T}; tol::
 	return r, div(ch.mvps, 2), ch.isconverged
 end
 
-function solve_residuals!(X::AbstractMatrix, feM::FixedEffects.FixedEffectSolverCPU; kwargs...)
+function solve_residuals!(X::AbstractMatrix, feM::FixedEffects.FixedEffectSolverCPU; progressbar = true, kwargs...)
     iterations = Int[]
     convergeds = Bool[]
+    if progressbar
+	    p = Progress(size(X, 2); dt = 0.5, desc = "Demeaning Variables...", color = :normal)
+	end
     for j in 1:size(X, 2)
         _, iteration, converged = solve_residuals!(view(X, :, j), feM; kwargs...)
         push!(iterations, iteration)
         push!(convergeds, converged)
+        if progressbar
+	        next!(p)
+	    end
     end
     return X, iterations, convergeds
 end
