@@ -62,7 +62,7 @@ end
 function inv_kernel!(scale)
 	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
-	@inbounds for i = index:stride:length(interaction)
+	@inbounds for i = index:stride:length(scale)
 		scale[i] = (scale[i] > 0) ? (1 / sqrt(scale[i])) : 0.0
 	end
 end
