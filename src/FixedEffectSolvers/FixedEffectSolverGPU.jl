@@ -45,43 +45,6 @@ function FixedEffectLinearMapGPU{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:gpu}
 	return FixedEffectLinearMapGPU{T}(fes, scales, caches, 256)
 end
 
-function scale!(scale::CuVector, refs::CuVector, interaction::CuVector, weights::CuVector, nthreads::Integer)
-	nblocks = cld(length(refs), nthreads) 
-	@cuda threads=nthreads blocks=nblocks scale_kernel!(scale, refs, interaction, weights)
-	@cuda threads=nthreads blocks=nblocks inv_kernel!(scale)
-end
-
-function scale_kernel!(scale, refs, interaction, weights)
-	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-	stride = blockDim().x * gridDim().x
-	@inbounds for i = index:stride:length(interaction)
-		CUDA.atomic_add!(pointer(scale, refs[i]), abs2(interaction[i]) * weights[i])
-	end
-end
-
-function inv_kernel!(scale)
-	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-	stride = blockDim().x * gridDim().x
-	@inbounds for i = index:stride:length(scale)
-		scale[i] = (scale[i] > 0) ? (1 / sqrt(scale[i])) : 0.0
-	end
-end
-
-
-
-function cache!(cache::CuVector, refs::CuVector, interaction::CuVector, weights::CuVector, scale::CuVector, nthreads::Integer)
-	nblocks = cld(length(cache), nthreads) 
-	@cuda threads=nthreads blocks=nblocks cache!_kernel!(cache, refs, interaction, weights, scale)
-end
-
-function cache!_kernel!(cache, refs, interaction, weights, scale)
-	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-	stride = blockDim().x * gridDim().x
-	@inbounds for i = index:stride:length(cache)
-		cache[i] += interaction[i] * sqrt(weights[i]) * scale[refs[i]]
-	end
-end
-
 LinearAlgebra.adjoint(fem::FixedEffectLinearMapGPU) = Adjoint(fem)
 
 function Base.size(fem::FixedEffectLinearMapGPU, dim::Integer)
@@ -165,7 +128,7 @@ function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::Abstr
 	h = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
 	hbar = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
 	tmp = zeros(T, length(weights))
-	update_weights!(FixedEffectSolverGPU{T}(m, cuzeros(T, length(weights)), b, r, x, v, h, hbar, tmp, fes), weights)
+	update_weights!(FixedEffectSolverGPU{T}(m, weights, b, r, x, v, h, hbar, tmp, fes), weights)
 end
 
 
@@ -180,6 +143,43 @@ function update_weights!(feM::FixedEffectSolverGPU{T}, weights::AbstractWeights)
 	feM.weights = weights
 	return feM
 end
+
+function scale!(scale::CuVector, refs::CuVector, interaction::CuVector, weights::CuVector, nthreads::Integer)
+	nblocks = cld(length(refs), nthreads) 
+	@cuda threads=nthreads blocks=nblocks scale_kernel!(scale, refs, interaction, weights)
+	@cuda threads=nthreads blocks=nblocks inv_kernel!(scale)
+end
+
+function scale_kernel!(scale, refs, interaction, weights)
+	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+	stride = blockDim().x * gridDim().x
+	@inbounds for i = index:stride:length(interaction)
+		CUDA.atomic_add!(pointer(scale, refs[i]), abs2(interaction[i]) * weights[i])
+	end
+end
+
+function inv_kernel!(scale)
+	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+	stride = blockDim().x * gridDim().x
+	@inbounds for i = index:stride:length(scale)
+		scale[i] = (scale[i] > 0) ? (1 / sqrt(scale[i])) : 0.0
+	end
+end
+
+
+function cache!(cache::CuVector, refs::CuVector, interaction::CuVector, weights::CuVector, scale::CuVector, nthreads::Integer)
+	nblocks = cld(length(cache), nthreads) 
+	@cuda threads=nthreads blocks=nblocks cache!_kernel!(cache, refs, interaction, weights, scale)
+end
+
+function cache!_kernel!(cache, refs, interaction, weights, scale)
+	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+	stride = blockDim().x * gridDim().x
+	@inbounds for i = index:stride:length(cache)
+		cache[i] = interaction[i] * sqrt(weights[i]) * scale[refs[i]]
+	end
+end
+
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverGPU{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	copyto!(feM.tmp, r)
