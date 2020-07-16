@@ -1,4 +1,4 @@
-using FixedEffects, CategoricalArrays, Random, CuArrays, BenchmarkTools, Statistics
+using FixedEffects, CategoricalArrays, Random, CUDA, BenchmarkTools, Statistics
 
 Random.seed!(1234)
 N = 10000000

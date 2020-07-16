@@ -26,7 +26,7 @@ Returns ``y_i - X_i'\\beta`` where ``\\beta = argmin_{b} \\sum_i y_i - X_i'b``, 
 * `y` : A `AbstractVector` or A `AbstractMatrix`
 * `fes`: A `Vector{<:FixedEffect}`
 * `w`: A vector of weights, i.e. `AbstractWeights`
-* `method` : A `Symbol` for the method. Default is :cpu. The option :gpu requires `CuArrays` (in this case, it is recommanded to use the option `double_precision = false`).
+* `method` : A `Symbol` for the method. Default is :cpu. The option :gpu requires `using CUDA` (in this case, it is recommanded to use the option `double_precision = false`).
 * `double_precision::Bool`: Should the demeaning operation use Float64 rather than Float32? Default to true.
 * `tol` : Tolerance. Default to 1e-8 if `double_precision = true`, 1e-6 otherwise.
 * `maxiter` : Maximum number of iterations
@@ -64,7 +64,7 @@ Returns ``\\beta = argmin_{b} \\sum_i w_i(y_i - X_i'b)`` where `X` denotes the m
 * `y` : A `AbstractVector` 
 * `fes`: A `Vector{<:FixedEffect}`
 * `w`: A vector of weights, i.e. `AbstractWeights`
-* `method` : A `Symbol` for the method. Default is :cpu. The option :gpu requires `CuArrays` (in this case, it is recommanded to use the option `double_precision = false`).
+* `method` : A `Symbol` for the method. Default is :cpu. The option :gpu requires `using CUDA` (in this case, it is recommanded to use the option `double_precision = false`).
 * `double_precision::Bool`: Should the demeaning operation use Float64 rather than Float32? Default to true.
 * `tol` : Tolerance. Default to 1e-8 if `double_precision = true`, 1e-6 otherwise.
 * `maxiter` : Maximum number of iterations

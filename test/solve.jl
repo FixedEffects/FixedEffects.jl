@@ -1,4 +1,4 @@
-using Test, StatsBase, FixedEffects
+using Test, StatsBase, CUDA, FixedEffects
 
 
 p1 = repeat(1:5, inner = 2)
@@ -28,14 +28,14 @@ solve_residuals!(deepcopy(x), feM)[1] ≈ solve_residuals!(deepcopy(x), fes, wei
 
 
 method_s = [:cpu]
-if FixedEffects.has_cuarrays()
+if FixedEffects.has_CUDA()
 	push!(method_s, :gpu)
 end
 for method in method_s
 	println("$method Float32")
-	(c, iter, conv) = solve_coefficients!(deepcopy(x), fes, method=method, double_precision = false) 
+	local (c, iter, conv) = solve_coefficients!(deepcopy(x), fes, method=method, double_precision = false) 
 	@test c ≈ c_lsmr rtol = 1e-3
-	(r, iter, conv) = solve_residuals!(deepcopy(x),fes, method=method, double_precision = false)
+	local (r, iter, conv) = solve_residuals!(deepcopy(x),fes, method=method, double_precision = false)
 	@test Float32.(r) ≈ Float32.(r_ols)
 end
 
