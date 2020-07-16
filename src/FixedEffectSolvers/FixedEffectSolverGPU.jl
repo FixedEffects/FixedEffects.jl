@@ -45,30 +45,40 @@ function FixedEffectLinearMapGPU{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:gpu}
 	return FixedEffectLinearMapGPU{T}(fes, scales, caches, 256)
 end
 
-function scale!(scale::CuVector, refs::CuVector, interaction::CuVector, sqrtw::CuVector, nthreads::Integer)
+function scale!(scale::CuVector, refs::CuVector, interaction::CuVector, weights::CuVector, nthreads::Integer)
 	nblocks = cld(length(refs), nthreads) 
-	@cuda threads=nthreads blocks=nblocks scale!_kernel!(scale, refs, interaction, sqrtw)
-	scale .= sqrt.(scale)
+	@cuda threads=nthreads blocks=nblocks scale_kernel!(scale, refs, interaction, weights)
+	@cuda threads=nthreads blocks=nblocks inv_kernel!(scale)
 end
 
-function scale!_kernel!(scale, refs, interaction, sqrtw)
+function scale_kernel!(scale, refs, interaction, weights)
 	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
 	@inbounds for i = index:stride:length(interaction)
-		CUDA.atomic_add!(pointer(scale, refs[i]), abs2(interaction[i] * sqrtw[i]))
+		CUDA.atomic_add!(pointer(scale, refs[i]), abs2(interaction[i]) * weights[i]))
 	end
 end
 
-function cache!(cache::CuVector, refs::CuVector, interaction::CuVector, sqrtw::CuVector, scale::CuVector, nthreads::Integer)
-	nblocks = cld(length(cache), nthreads) 
-	@cuda threads=nthreads blocks=nblocks cache!_kernel!(cache, refs, interaction, sqrtw, scale)
+function inv_kernel!(scale)
+	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+	stride = blockDim().x * gridDim().x
+	@inbounds for i = index:stride:length(interaction)
+		scale[i] = (scale[i] > 0) ? (1 / sqrt(scale[i])) : 0.0
+	end
 end
 
-function cache!_kernel!(cache, refs, interaction, sqrtw, scale)
+
+
+function cache!(cache::CuVector, refs::CuVector, interaction::CuVector, weights::CuVector, scale::CuVector, nthreads::Integer)
+	nblocks = cld(length(cache), nthreads) 
+	@cuda threads=nthreads blocks=nblocks cache!_kernel!(cache, refs, interaction, weights, scale)
+end
+
+function cache!_kernel!(cache, refs, interaction, weights, scale)
 	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
 	@inbounds for i = index:stride:length(cache)
-		cache[i] += interaction[i] * sqrtw[i] / scale[refs[i]]
+		cache[i] += interaction[i] * sqrt(weights[i]) * scale[refs[i]]
 	end
 end
 
@@ -135,7 +145,7 @@ end
 
 mutable struct FixedEffectSolverGPU{T} <: AbstractFixedEffectSolver{T}
 	m::FixedEffectLinearMapGPU{T}
-	sqrtw::CuVector{T}
+	weights::CuVector{T}
 	b::CuVector{T}
 	r::CuVector{T}
 	x::FixedEffectCoefficients{<: AbstractVector{T}}
@@ -160,26 +170,26 @@ end
 
 
 function update_weights!(feM::FixedEffectSolverGPU{T}, weights::AbstractWeights) where {T}
-	sqrtw = cu(T, sqrt.(weights))
+	weights = cu(T, collect(weights))
 	for (scale, fe) in zip(feM.m.scales, feM.m.fes)
-		scale!(scale, fe.refs, fe.interaction, sqrtw, 256)
+		scale!(scale, fe.refs, fe.interaction, weights, 256)
 	end
 	for (cache, scale, fe) in zip(feM.m.caches, feM.m.scales, feM.m.fes)
-		cache!(cache, fe.refs, fe.interaction, sqrtw, scale, 256)
+		cache!(cache, fe.refs, fe.interaction, weights, scale, 256)
 	end	
-	feM.sqrtw = sqrtw
+	feM.weights = weights
 	return feM
 end
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverGPU{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	copyto!(feM.tmp, r)
 	copyto!(feM.r, feM.tmp)
-	feM.r .*= feM.sqrtw
+	feM.r .*= sqrt.(feM.weights)
 	copyto!(feM.b, feM.r)
 	fill!(feM.x, 0.0)
 	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
 	mul!(feM.r, feM.m, feM.x, -1.0, 1.0)
-	feM.r ./=  feM.sqrtw
+	feM.r ./=  sqrt.(feM.weights)
 	copyto!(feM.tmp, feM.r)
 	copyto!(r, feM.tmp)
 	return r, div(ch.mvps, 2), ch.isconverged
@@ -199,7 +209,7 @@ end
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectSolverGPU{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	copyto!(feM.tmp, r)
 	copyto!(feM.b, feM.tmp)
-	feM.b .*= feM.sqrtw
+	feM.b .*= sqrt.(feM.weights)
 	fill!(feM.x, 0.0)
 	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
 	for (x, scale) in zip(feM.x.x, feM.m.scales)

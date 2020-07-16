@@ -33,7 +33,7 @@ function scale!(scale::AbstractVector, refs::AbstractVector, interaction::Abstra
 	end
 	# Case of interaction variatble equal to zero in the category (issue #97)
 	for i in 1:length(scale)
-	    scale[i] = scale[i] > 0.0 ? (1.0 / sqrt(scale[i])) : 0.0
+	    scale[i] = scale[i] > 0 ? (1 / sqrt(scale[i])) : 0.0
 	end
 end
 
