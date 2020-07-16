@@ -1,6 +1,4 @@
-using CuArrays.CUDAnative
-import CuArrays: allowscalar
-allowscalar(false)
+CUDA.allowscalar(false)
 
 ##############################################################################
 ##
@@ -56,7 +54,7 @@ function scale!_kernel!(scale, refs, interaction, sqrtw)
 	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
 	@inbounds for i = index:stride:length(interaction)
-		CuArrays.CUDAnative.atomic_add!(pointer(scale, refs[i]), abs2(interaction[i] * sqrtw[i]))
+		CUDA.atomic_add!(pointer(scale, refs[i]), abs2(interaction[i] * sqrtw[i]))
 	end
 end
 
@@ -102,7 +100,7 @@ function gather_kernel!(fecoef, refs, α, y, cache)
 	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
 	@inbounds for i = index:stride:length(y)
-		CuArrays.CUDAnative.atomic_add!(pointer(fecoef, refs[i]), α * y[i] * cache[i])
+		CUDA.atomic_add!(pointer(fecoef, refs[i]), α * y[i] * cache[i])
 	end
 end
 

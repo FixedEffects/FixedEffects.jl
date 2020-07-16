@@ -9,18 +9,8 @@ using LinearAlgebra
 using CategoricalArrays
 using FillArrays
 using StatsBase
-using CUDAapi
-if has_cuda()
-	try
-		using CuArrays
-		@eval has_cuarrays() = true
-	catch
-		@info "CUDA is installed, but CuArrays.jl fails to load"
-		@eval has_cuarrays() = false
-	end
-else
-	has_cuarrays() = false
-end
+using Requires
+
 ##############################################################################
 ##
 ## Exported methods and types 
@@ -46,8 +36,10 @@ include("FixedEffect.jl")
 include("AbstractFixedEffectSolver.jl")
 include("FixedEffectSolvers/FixedEffectLinearMap.jl")
 include("FixedEffectSolvers/FixedEffectSolverCPU.jl")
-if has_cuarrays()
-	include("FixedEffectSolvers/FixedEffectSolverGPU.jl")
+has_cuarrays() = false
+function __init__()
+	has_cuarrays() = true
+    @require CUDA="052768ef-5323-5732-b1bb-66c8b64840ba" include("FixedEffectSolvers/FixedEffectSolverGPU.jl")
 end
 
 end  # module FixedEffects

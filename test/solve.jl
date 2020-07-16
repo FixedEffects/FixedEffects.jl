@@ -33,9 +33,9 @@ if FixedEffects.has_cuarrays()
 end
 for method in method_s
 	println("$method Float32")
-	(c, iter, conv) = solve_coefficients!(deepcopy(x), fes, method=method, double_precision = false) 
+	local (c, iter, conv) = solve_coefficients!(deepcopy(x), fes, method=method, double_precision = false) 
 	@test c ≈ c_lsmr rtol = 1e-3
-	(r, iter, conv) = solve_residuals!(deepcopy(x),fes, method=method, double_precision = false)
+	local (r, iter, conv) = solve_residuals!(deepcopy(x),fes, method=method, double_precision = false)
 	@test Float32.(r) ≈ Float32.(r_ols)
 end
 
