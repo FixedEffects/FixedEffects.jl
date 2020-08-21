@@ -160,7 +160,7 @@ function solve_residuals!(X::AbstractMatrix, feM::FixedEffects.FixedEffectSolver
     iterations = Int[]
     convergeds = Bool[]
     if progressbar
-	    p = Progress(size(X, 2); dt = 0.5, desc = "Demeaning Variables...", color = :normal)
+	    p = Progress(size(X, 2); dt = 1, desc = "Demeaning Variables...", color = :normal)
 	end
     for j in 1:size(X, 2)
         _, iteration, converged = solve_residuals!(view(X, :, j), feM; kwargs...)
