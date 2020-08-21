@@ -39,12 +39,12 @@ end
 
 ##############################################################################
 ##
-## Exported methods and types 
+## Exported methods and types
 ##
 ##############################################################################
 
 
-export 
+export
 group,
 FixedEffect,
 AbstractFixedEffectSolver,

@@ -16,6 +16,7 @@ Requires = "ae029012-a4dd-5104-9daa-d747884805df"
 CategoricalArrays = "0"
 FillArrays = "0"
 Reexport = "0"
+Requires = "1"
 StatsBase = "0"
 julia = "1.3"
 
