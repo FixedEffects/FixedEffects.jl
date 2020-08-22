@@ -15,6 +15,7 @@ Requires = "ae029012-a4dd-5104-9daa-d747884805df"
 [compat]
 CategoricalArrays = "0"
 FillArrays = "0"
+ProgressMeter = "1"
 Reexport = "0"
 Requires = "1"
 StatsBase = "0"
