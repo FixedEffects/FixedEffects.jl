@@ -195,7 +195,7 @@ function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverGPU{T}; tol::
 	return r, div(ch.mvps, 2), ch.isconverged
 end
 
-function FixedEffects.solve_residuals!(X::AbstractMatrix, feM::FixedEffects.FixedEffectSolverGPU; kwargs...)
+function FixedEffects.solve_residuals!(X::AbstractMatrix, feM::FixedEffects.FixedEffectSolverGPU; progressbar = true, kwargs...)
     iterations = Int[]
     convergeds = Bool[]
     for j in 1:size(X, 2)

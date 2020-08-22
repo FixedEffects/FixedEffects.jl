@@ -156,13 +156,19 @@ function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverCPU{T}; tol::
 	return r, div(ch.mvps, 2), ch.isconverged
 end
 
-function solve_residuals!(X::AbstractMatrix, feM::FixedEffects.FixedEffectSolverCPU; kwargs...)
+function solve_residuals!(X::AbstractMatrix, feM::FixedEffects.FixedEffectSolverCPU; progressbar = true, kwargs...)
     iterations = Int[]
     convergeds = Bool[]
+    if progressbar
+	    p = Progress(size(X, 2); dt = 1, desc = "Demeaning Variables...", color = :normal)
+	end
     for j in 1:size(X, 2)
         _, iteration, converged = solve_residuals!(view(X, :, j), feM; kwargs...)
         push!(iterations, iteration)
         push!(convergeds, converged)
+        if progressbar
+	        next!(p)
+	    end
     end
     return X, iterations, convergeds
 end
