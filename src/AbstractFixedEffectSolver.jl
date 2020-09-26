@@ -88,3 +88,15 @@ function solve_coefficients!(y::AbstractVector{<: Number}, fes::AbstractVector{<
 	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method}, nthreads)
 	solve_coefficients!(y, feM; maxiter = maxiter, tol = tol)
 end
+
+
+
+function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Union{Type{Val{:lsmr}}, Type{Val{:lsmr_threads}}, Type{Val{:lsmr_cores}}}) where {T}
+	@warn ":lsmr, :lsmr_threads, and :lsmr_cores are deprecated (FixedEffects is now always multi-threaded)"
+	AbstractFixedEffectSolver{T}(fes, weights, Val{:cpu})
+end
+
+function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:lsmr_gpu}}) where {T}
+	@warn ":lsmr_gpu is deprecated,  use :gpu"
+	AbstractFixedEffectSolver{T}(fes, weights, Val{:gpu})
+end
