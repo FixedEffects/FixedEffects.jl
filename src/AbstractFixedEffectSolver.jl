@@ -7,16 +7,6 @@
 ##############################################################################
 abstract type AbstractFixedEffectSolver{T} end
 
-function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Union{Type{Val{:lsmr}}, Type{Val{:lsmr_threads}}, Type{Val{:lsmr_cores}}}) where {T}
-	@warn ":lsmr, :lsmr_threads, and :lsmr_cores are deprecated (FixedEffects is now always multi-threaded)"
-	AbstractFixedEffectSolver{T}(fes, weights, Val{:cpu})
-end
-
-function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:lsmr_gpu}}) where {T}
-	@warn ":lsmr_gpu is deprecated,  use :gpu"
-	AbstractFixedEffectSolver{T}(fes, weights, Val{:gpu})
-end
-
 """
 `solve_residuals!(y, fes, w; method = :cpu, double_precision = true, tol = 1e-8, maxiter = 10000, )`
 
@@ -44,12 +34,13 @@ p2 = repeat(1:5, outer = 2)
 solve_residuals!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
-function solve_residuals!(y::Union{AbstractVector{<: Number}, AbstractMatrix{<: Number}}, fes::AbstractVector{<: FixedEffect}, w::AbstractWeights = Weights(Ones{eltype(y)}(size(y, 1))); 
+function solve_residuals!(y::Union{AbstractVector{<: Number}, AbstractMatrix{<: Number}}, fes::AbstractVector{<: FixedEffect}, w::AbstractWeights = uweights(eltype(y), size(y, 1)); 
 	method::Symbol = :cpu, double_precision::Bool = eltype(y) == Float64, 
-	tol::Real = double_precision ? 1e-8 : 1e-6, maxiter::Integer = 10000)
+	tol::Real = double_precision ? 1e-8 : 1e-6, maxiter::Integer = 10000,
+	nthreads = method == :cpu ? Threads.nthreads() : 256)
 	any((length(fe) != size(y, 1) for fe in fes)) && throw("FixedEffects must have the same length as y")
 	any(ismissing.(fes)) && throw("FixedEffects must not have missing values")
-	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method})
+	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method}, nthreads)
 	solve_residuals!(y, feM; maxiter = maxiter, tol = tol)
 end
 
@@ -89,11 +80,11 @@ x = rand(10)
 solve_coefficients!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
-function solve_coefficients!(y::AbstractVector{<: Number}, fes::AbstractVector{<: FixedEffect}, w::AbstractWeights  = Weights(Ones{eltype(y)}(length(y))); 
-	method::Symbol = :cpu, double_precision::Bool = eltype(y) == Float64, 
-	tol::Real = double_precision ? 1e-8 : 1e-6,  maxiter::Integer = 10000)
+function solve_coefficients!(y::AbstractVector{<: Number}, fes::AbstractVector{<: FixedEffect}, w::AbstractWeights = uweights(eltype(y), length(y)); method::Symbol = :cpu, double_precision::Bool = eltype(y) == Float64, 
+	tol::Real = double_precision ? 1e-8 : 1e-6,  maxiter::Integer = 10000, 
+	nthreads = method == :cpu ? Threads.nthreads() : 256)
 	any(ismissing.(fes)) && throw("Some FixedEffect has a missing value for reference or interaction")
 	any((length(fe) != length(y) for fe in fes))  && throw("FixedEffects must have the same length as y")
-	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method})
+	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method}, nthreads)
 	solve_coefficients!(y, feM; maxiter = maxiter, tol = tol)
 end

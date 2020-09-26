@@ -19,8 +19,7 @@ mutable struct FixedEffectLinearMapCPU{T}
 	nthreads::Int
 end
 
-function FixedEffectLinearMapCPU{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:cpu}}) where {T}
-	nthreads = Threads.nthreads()
+function FixedEffectLinearMapCPU{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:cpu}}, nthreads) where {T}
 	scales = [zeros(T, fe.n) for fe in fes]
 	caches = [zeros(T, length(fes[1].interaction)) for fe in fes]
 	fecoefs = [[zeros(T, fe.n) for _ in 1:nthreads] for fe in fes]
@@ -47,7 +46,8 @@ function LinearAlgebra.mul!(fecoefs::FixedEffectCoefficients,
 	return fecoefs
 end
 
-function gather!(fecoef::AbstractVector, refs::AbstractVector, α::Number, y::AbstractVector, cache::AbstractVector, tmp::AbstractVector, nthreads::Integer)
+function gather!(fecoef::AbstractVector, refs::AbstractVector, α::Number, 
+	y::AbstractVector, cache::AbstractVector, tmp::AbstractVector, nthreads::Integer)
 	n_each = div(length(y), nthreads)
 	Threads.@threads for t in 1:nthreads
 		fill!(tmp[t], 0.0)
@@ -59,7 +59,8 @@ function gather!(fecoef::AbstractVector, refs::AbstractVector, α::Number, y::Ab
 	gather!(fecoef, refs, α, y, cache, (nthreads * n_each + 1):length(y))
 end
 
-function gather!(fecoef::AbstractVector, refs::AbstractVector, α::Number, y::AbstractVector, cache::AbstractVector, irange::AbstractRange)
+function gather!(fecoef::AbstractVector, refs::AbstractVector, α::Number, 
+	y::AbstractVector, cache::AbstractVector, irange::AbstractRange)
 	@inbounds @simd for i in irange
 		fecoef[refs[i]] += α * y[i] * cache[i]
 	end
@@ -74,7 +75,8 @@ function LinearAlgebra.mul!(y::AbstractVector, fem::FixedEffectLinearMapCPU,
 	return y
 end
 
-function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector, refs::AbstractVector, cache::AbstractVector, nthreads::Integer)
+function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector, 
+	refs::AbstractVector, cache::AbstractVector, nthreads::Integer)
 	n_each = div(length(y), nthreads)
 	Threads.@threads for t in 1:nthreads
 		scatter!(y, α, fecoef, refs, cache, ((t - 1) * n_each + 1):(t * n_each))
@@ -82,7 +84,8 @@ function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector, refs::A
 	scatter!(y, α, fecoef, refs, cache, (nthreads * n_each + 1):length(y))
 end
 
-function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector, refs::AbstractVector, cache::AbstractVector, irange::AbstractRange)
+function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector, 
+	refs::AbstractVector, cache::AbstractVector, irange::AbstractRange)
 	@inbounds @simd for i in irange
 		y[i] += α * fecoef[refs[i]] * cache[i]
 	end
@@ -105,8 +108,8 @@ mutable struct FixedEffectSolverCPU{T} <: AbstractFixedEffectSolver{T}
 	hbar::FixedEffectCoefficients{<: AbstractVector{T}}
 end
 
-function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:cpu}}) where {T}
-	m = FixedEffectLinearMapCPU{T}(fes, Val{:cpu})
+function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:cpu}}, nthreads = Threads.nthreads()) where {T}
+	m = FixedEffectLinearMapCPU{T}(fes, Val{:cpu}, nthreads)
 	b = zeros(T, length(weights))
 	r = zeros(T, length(weights))
 	x = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
@@ -146,27 +149,32 @@ end
 
 function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverCPU{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	copyto!(feM.r, r)
-	feM.r .*=  sqrt.(feM.weights)
+	if !(feM.weights isa UnitWeights)
+		feM.r .*=  sqrt.(feM.weights)
+	end
 	copyto!(feM.b, feM.r)
 	fill!(feM.x, 0)
 	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
 	mul!(feM.r, feM.m, feM.x, -1.0, 1.0)
-	feM.r ./=  sqrt.(feM.weights)
+	if !(feM.weights isa UnitWeights)
+		feM.r ./=  sqrt.(feM.weights)
+	end
 	copyto!(r, feM.r)
 	return r, div(ch.mvps, 2), ch.isconverged
 end
 
-function solve_residuals!(X::AbstractMatrix, feM::FixedEffects.FixedEffectSolverCPU; progressbar = true, kwargs...)
+function solve_residuals!(X::AbstractMatrix, feM::FixedEffects.FixedEffectSolverCPU; progress_bar = true, kwargs...)
     iterations = Int[]
     convergeds = Bool[]
-    if progressbar
+    progress_bar = ifelse(size(X, 2) <= 4, false, progress_bar)
+    if progress_bar
 	    p = Progress(size(X, 2); dt = 1, desc = "Demeaning Variables...", color = :normal)
 	end
     for j in 1:size(X, 2)
         _, iteration, converged = solve_residuals!(view(X, :, j), feM; kwargs...)
         push!(iterations, iteration)
         push!(convergeds, converged)
-        if progressbar
+        if progress_bar
 	        next!(p)
 	    end
     end
@@ -175,7 +183,9 @@ end
 
 function solve_coefficients!(r::AbstractVector, feM::FixedEffectSolverCPU{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	copyto!(feM.b, r)
-	feM.b .*=  sqrt.(feM.weights)
+	if !(feM.weights isa UnitWeights)
+		feM.b .*=  sqrt.(feM.weights)
+	end
 	fill!(feM.x, 0)
 	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
 	for (x, scale) in zip(feM.x.x, feM.m.scales)
