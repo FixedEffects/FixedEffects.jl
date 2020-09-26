@@ -7,11 +7,9 @@ module FixedEffects
 ##############################################################################
 using LinearAlgebra
 using CategoricalArrays
-using FillArrays
 using StatsBase
 using Requires
 using ProgressMeter
-
 
 
 ##############################################################################
@@ -36,6 +34,9 @@ function __init__()
 	end
 end
 
+
+include("precompile.jl")
+_precompile_()
 
 ##############################################################################
 ##

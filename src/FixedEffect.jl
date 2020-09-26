@@ -16,7 +16,7 @@ struct FixedEffect{R <: AbstractVector{<:Integer}, I <: AbstractVector{<: Real}}
     end
 end
 
-function FixedEffect(args...; interaction::AbstractVector = Ones{Float64}(length(args[1])))
+function FixedEffect(args...; interaction::AbstractVector = uweights(length(args[1])))
     if length(args) != 1
         FixedEffect(group(args...); interaction = interaction)
     else
@@ -139,7 +139,7 @@ end
 
 function normalize!(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVector{<:FixedEffect}; kwargs...)
     # The solution is generally not unique. Find connected components and scale accordingly
-    idx = findall(fe -> isa(fe.interaction, Ones), fes)
+    idx = findall(fe -> isa(fe.interaction, UnitWeights), fes)
     length(idx) >= 2 && rescale!(view(fecoefs, idx), view(fes, idx))
     return fecoefs
 end
