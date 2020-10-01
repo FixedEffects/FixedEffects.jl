@@ -1,4 +1,4 @@
-using Test, StatsBase, CUDA, FixedEffects
+using Test, StatsBase, CUDA, FixedEffects, PooledArrays, CategoricalArrays
 
 
 p1 = repeat(1:5, inner = 2)
@@ -7,12 +7,15 @@ x = [ 0.5548445405298847 , 0.9444014472663531 , 0.0510866660400604 , 0.941575022
 fes = [FixedEffect(p1), FixedEffect(p2)]
 r_ols =  [-0.2015993617092453,  0.2015993617092464, -0.2015993617092463,  0.2015993617092462, -0.2015993617092465,  0.2015993617092467, -0.2015993617092465,  0.2015993617092470, -0.2015993617092468,  0.20159936170924628]
 
-c_lsmr,_,_ = solve_coefficients!(deepcopy(x), fes)
-
-
-(c, iter, conv) = solve_coefficients!(deepcopy(x), fes)
-@test c ≈ c_lsmr
 (r, iter, conv) = solve_residuals!(deepcopy(x), fes)
+@test r ≈ r_ols
+
+using PooledArrays
+(r, iter, conv) = solve_residuals!(deepcopy(x), [FixedEffect(PooledArray(p1), PooledArray(p2))])
+@test r ≈ r_ols
+
+using CategorialArrays
+(r, iter, conv) = solve_residuals!(deepcopy(x), [FixedEffect(categorical(p1), categorical(p2))])
 @test r ≈ r_ols
 
 (c, iter, conv) = solve_residuals!([x x], fes)

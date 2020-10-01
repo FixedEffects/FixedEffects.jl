@@ -6,11 +6,9 @@ module FixedEffects
 ##
 ##############################################################################
 using LinearAlgebra
-using CategoricalArrays
 using StatsBase
 using Requires
 using ProgressMeter
-
 
 ##############################################################################
 ##
@@ -45,9 +43,7 @@ _precompile_()
 ##############################################################################
 
 
-export
-group,
-FixedEffect,
+export FixedEffect,
 AbstractFixedEffectSolver,
 solve_residuals!,
 solve_coefficients!
