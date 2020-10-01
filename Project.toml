@@ -19,5 +19,6 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 PooledArrays = "2dfb63ee-cc39-5dd5-95bd-886bf059d720"
 CategoricalArrays = "324d7699-5711-5eae-9e2f-1d82baa6b597"
+
 [targets]
-test = ["Test", "CUDA"]
+test = ["Test", "CUDA", "PooledArrays", "CategoricalArrays"]
