@@ -182,7 +182,7 @@ function solve_residuals!(X::AbstractMatrix, feM::FixedEffects.FixedEffectSolver
 	    end
     end
     if progress_bar
-    	print()
+    	print(io)
     end
     return X, iterations, convergeds
 end
