@@ -168,7 +168,7 @@ function solve_residuals!(X::AbstractMatrix, feM::FixedEffects.FixedEffectSolver
     convergeds = Bool[]
     io = stdout
     if progress_bar
-    	bar = MiniProgressBar(header = "Demeaning:", color = Base.info_color(), percentage = false, always_reprint=true)
+    	bar = MiniProgressBar(header = "Demean Variables:", color = Base.info_color(), percentage = false, always_reprint=true)
     	bar.max = size(X, 2)
     	showprogress(io, bar)
 	end
