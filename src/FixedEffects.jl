@@ -8,14 +8,16 @@ module FixedEffects
 using LinearAlgebra
 using StatsBase
 using Requires
-using ProgressMeter
+using Printf
 
 ##############################################################################
 ##
 ## Load files
 ##
 ##############################################################################
-include("lsmr.jl")
+include("utils/lsmr.jl")
+include("utils/progressbar.jl")
+
 include("FixedEffect.jl")
 include("AbstractFixedEffectSolver.jl")
 include("FixedEffectSolvers/FixedEffectLinearMap.jl")

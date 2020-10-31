@@ -166,17 +166,23 @@ end
 function solve_residuals!(X::AbstractMatrix, feM::FixedEffects.FixedEffectSolverCPU; progress_bar = true, kwargs...)
     iterations = Int[]
     convergeds = Bool[]
-    progress_bar = ifelse(size(X, 2) <= 4, false, progress_bar)
+    io = stdout
     if progress_bar
-	    p = Progress(size(X, 2); dt = 1, desc = "Demeaning Variables...", color = :normal)
+    	bar = MiniProgressBar(header = "Demean Variables:", color = Base.info_color(), percentage = false, always_reprint=true)
+    	bar.max = size(X, 2)
+    	showprogress(io, bar)
 	end
     for j in 1:size(X, 2)
         _, iteration, converged = solve_residuals!(view(X, :, j), feM; kwargs...)
         push!(iterations, iteration)
         push!(convergeds, converged)
         if progress_bar
-	        next!(p)
+        	bar.current = j
+        	showprogress(io, bar)
 	    end
+    end
+    if progress_bar
+    	print(io)
     end
     return X, iterations, convergeds
 end
