@@ -133,11 +133,12 @@ end
 
 function update_weights!(feM::FixedEffectSolverGPU{T}, weights::AbstractWeights) where {T}
 	weights = cu(T, weights)
+	nthreads = feM.m.nthreads
 	for (scale, fe) in zip(feM.m.scales, feM.m.fes)
-		scale!(scale, fe.refs, fe.interaction, weights, fe.m.nthreads)
+		scale!(scale, fe.refs, fe.interaction, weights, nthreads)
 	end
 	for (cache, scale, fe) in zip(feM.m.caches, feM.m.scales, feM.m.fes)
-		cache!(cache, fe.refs, fe.interaction, weights, scale, fe.m.nthreads)
+		cache!(cache, fe.refs, fe.interaction, weights, scale, nthreads)
 	end	
 	feM.weights = weights
 	return feM
