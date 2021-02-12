@@ -127,12 +127,13 @@ function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::Abstr
 	h = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
 	hbar = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
 	tmp = zeros(T, length(weights))
-	update_weights!(FixedEffectSolverGPU{T}(m, weights, b, r, x, v, h, hbar, tmp, fes), weights)
+	update_weights!(FixedEffectSolverGPU{T}(m, cuzeros(T, length(weights)), b, r, x, v, h, hbar, tmp, fes), weights)
 end
 
 
 function update_weights!(feM::FixedEffectSolverGPU{T}, weights::AbstractWeights) where {T}
 	weights = cu(T, collect(weights))
+	weights = cu(T, weights)
 	nthreads = feM.m.nthreads
 	for (scale, fe) in zip(feM.m.scales, feM.m.fes)
 		scale!(scale, fe.refs, fe.interaction, weights, nthreads)
