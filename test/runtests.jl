@@ -1,4 +1,4 @@
-tests = ["solve.jl"]
+tests = ["types.jl", "solve.jl"]
 println("Running tests:")
 
 for test in tests
