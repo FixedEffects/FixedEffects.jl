@@ -6,13 +6,14 @@
 ##
 ##############################################################################
 
-struct FixedEffect{R <: AbstractVector{<:Integer}, I <: AbstractVector{<: Real}}
+struct FixedEffect{R <: AbstractVector{<:Integer}, I <: AbstractVector{<:Real}}
 	refs::R                 # refs must be between 0 and n
 	interaction::I          # the continuous interaction
 	n::Int                  # Number of potential values (= maximum(refs))
 	function FixedEffect{R, I}(refs, interaction, n) where {R <: AbstractVector{<:Integer}, I <: AbstractVector{<: Real}}
-		length(refs) == length(interaction) || error("refs and interaction don't have the same length")
-		new(refs, interaction, n)
+		length(refs) == length(interaction) || throw(DimensionMismatch(
+			"cannot match refs of length $(length(refs)) with interaction of length $(length(interaction))"))
+		return new(refs, interaction, n)
 	end
 end
 
@@ -21,25 +22,34 @@ function FixedEffect(args...; interaction::AbstractVector = uweights(length(args
 	FixedEffect{typeof(g.refs), typeof(interaction)}(g.refs, interaction, g.n)
 end
 
-function Base.show(io::IO, fe::FixedEffect)
-	println(io, "Refs:        ", length(fe.refs), "-element ", typeof(fe.refs))
-	println(io, "             ", Int.(fe.refs[1:min(5, length(fe.refs))]), "...")
-	println(io, "Interaction: ", length(fe.interaction), "-element ", typeof(fe.interaction))
-	println(io, "             ", fe.interaction[1:min(5, length(fe.interaction))], "...")
-end
+Base.show(io::IO, ::FixedEffect) = print(io, "Fixed Effects")
 
-Base.length(fe::FixedEffect) = length(fe.refs)
-Base.eltype(fe::FixedEffect) = eltype(I)
-
-Base.getindex(fe::FixedEffect, esample::Colon) = fe
-function Base.getindex(fe::FixedEffect{R, I}, esample::AbstractVector) where {R, I}
+function Base.show(io::IO, ::MIME"text/plain", fe::FixedEffect)
+	print(io, fe, ':')
+	print(io, "\n  refs (", length(fe.refs), "-element ", typeof(fe.refs), "):")
+	print(io, "\n    [", string.(Int.(fe.refs[1:min(5, length(fe.refs))])).*", "..., "... ]")
 	if fe.interaction isa UnitWeights
-		FixedEffect{R, I}(fe.refs[esample], uweights(eltype(I), sum(esample)),  fe.n)
+		print(io, "\n  interaction (UnitWeights):")
+		print(io, "\n    none")
 	else
-		FixedEffect{R, I}(fe.refs[esample], fe.interaction[esample],  fe.n)
+		print(io, "\n  interaction (", length(fe.interaction), "-element ", typeof(fe.interaction), "):")
+		print(io, "\n    [", (sprint(show, x; context=:compact=>true)*", " for x in fe.interaction[1:min(5, length(fe.interaction))])..., "... ]")
 	end
 end
 
+Base.size(fe::FixedEffect) = size(fe.refs)
+Base.length(fe::FixedEffect) = length(fe.refs)
+Base.eltype(::FixedEffect{R,I}) where {R,I} = eltype(I)
+
+Base.getindex(fe::FixedEffect, ::Colon) = fe
+
+@propagate_inbounds function Base.getindex(fe::FixedEffect, esample)
+	@boundscheck checkbounds(fe.refs, esample)
+	@boundscheck checkbounds(fe.interaction, esample)
+	@inbounds refs = fe.refs[esample]
+	@inbounds interaction = fe.interaction[esample]
+	return FixedEffect{typeof(fe.refs), typeof(fe.interaction)}(refs, interaction, fe.n)
+end
 
 ##############################################################################
 ##
@@ -52,21 +62,25 @@ mutable struct GroupedArray{N} <: AbstractArray{UInt32, N}
 	refs::Array{UInt32, N}   # refs must be between 0 and n. 0 means missing
 	n::Int                   # Number of potential values (= maximum(refs))
 end
+
+Base.size(g::GroupedArray) = size(g.refs)
+@propagate_inbounds Base.getindex(g::GroupedArray, i::Int) = getindex(g.refs, i)
+@propagate_inbounds Base.getindex(g::GroupedArray, I) = getindex(g.refs, I)
+
 group(xs::GroupedArray) = xs
 
 function group(xs::AbstractArray)
 	refs = Array{UInt32}(undef, size(xs))
 	invpool = Dict{eltype(xs), UInt32}()
 	n = 0
-	has_missing = false
+	z = UInt32(0)
 	@inbounds for i in eachindex(xs)
 		x = xs[i]
 		if x === missing
 			refs[i] = 0
-			has_missing = true
 		else
-			lbl = get(invpool, x, 0)
-			if lbl !== 0
+			lbl = get(invpool, x, z)
+			if !iszero(lbl)
 				refs[i] = lbl
 			else
 				n += 1
@@ -82,7 +96,8 @@ function group(args...)
 	g1 = deepcopy(group(args[1]))
 	for j = 2:length(args)
 		gj = group(args[j])
-		length(g1.refs) == length(gj.refs) || throw(DimensionError())
+		size(g1) == size(gj) || throw(DimensionMismatch(
+            "cannot match array of size $(size(g1)) with array of size $(size(gj))"))
 		combine!(g1, gj)
 	end
 	factorize!(g1)
@@ -97,16 +112,26 @@ function combine!(g1::GroupedArray, g2::GroupedArray)
 	return g1
 end
 
-function factorize!(x::GroupedArray{N}) where {N}
-	refs = x.refs
-	uu = sort!(unique(refs))
-	has_missing = uu[1] == 0
-	ngroups = length(uu) - has_missing
-	dict = Dict{UInt32, UInt32}(zip(uu, UInt32(1-has_missing):UInt32(ngroups)))
-	for i in eachindex(refs)
-		refs[i] = dict[refs[i]]
-	end
-	GroupedArray{N}(refs, ngroups)
+# An in-place version of group() that relabels the refs
+function factorize!(g::GroupedArray{N}) where {N}
+    refs = g.refs
+    invpool = Dict{UInt32, UInt32}()
+    n = 0
+	z = UInt32(0)
+    @inbounds for i in eachindex(refs)
+        x = refs[i]
+        if !iszero(x)
+            lbl = get(invpool, x, z)
+            if !iszero(lbl)
+                refs[i] = lbl
+            else
+                n += 1
+                refs[i] = n
+                invpool[x] = n
+            end
+        end
+    end
+    return GroupedArray{N}(refs, n)
 end
 
 ##############################################################################

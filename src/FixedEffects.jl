@@ -5,6 +5,7 @@ module FixedEffects
 ## Dependencies
 ##
 ##############################################################################
+using Base: @propagate_inbounds
 using LinearAlgebra
 using StatsBase
 using Requires
