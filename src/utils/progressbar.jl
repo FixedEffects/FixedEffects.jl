@@ -1,14 +1,14 @@
+# from Pkg.jl
 Base.@kwdef mutable struct MiniProgressBar
-    max::Int = 1.0
+    max::Int = 1
     header::String = ""
     color::Symbol = :white
-    width::Int = 40
-    current::Int = 0.0
-    prev::Int = 0.0
+    width::Int = 32
+    current::Int = 0
+    prev::Int = 0
     has_shown::Bool = false
     time_shown::Float64 = 0.0
     percentage::Bool = true
-    always_reprint::Bool = false
     indent::Int = 4
 end
 
@@ -22,11 +22,6 @@ function showprogress(io::IO, p::MiniProgressBar)
     else
         perc = p.current / p.max * 100
         prev_perc = p.prev / p.max * 100
-    end
-    # Bail early if we are not updating the progress bar,
-    # Saves printing to the terminal
-    if !p.always_reprint && p.has_shown && !((perc - prev_perc) > PROGRESS_BAR_PERCENTAGE_GRANULARITY[])
-        return
     end
     if !isinteractive()
         t = time()
@@ -50,4 +45,11 @@ function showprogress(io::IO, p::MiniProgressBar)
         print(io, p.current, "/",  p.max)
     end
     print(io, "\r")
+end
+
+function end_progress(io, p::MiniProgressBar)
+    ansi_enablecursor = "\e[?25h"
+    ansi_clearline = "\e[2K"
+    print(io, ansi_enablecursor)
+    print(io, ansi_clearline)
 end

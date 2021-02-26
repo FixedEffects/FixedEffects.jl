@@ -166,23 +166,24 @@ end
 function solve_residuals!(X::AbstractMatrix, feM::FixedEffects.FixedEffectSolverCPU; progress_bar = true, kwargs...)
     iterations = Int[]
     convergeds = Bool[]
-    io = stdout
-    if progress_bar
-    	bar = MiniProgressBar(header = "Demean Variables:", color = Base.info_color(), percentage = false, always_reprint=true)
-    	bar.max = size(X, 2)
-    	showprogress(io, bar)
-	end
+    bar = MiniProgressBar(header = "Demean Variables:", color = Base.info_color(), percentage = false, max = size(X, 2))
     for j in 1:size(X, 2)
+    	v0 = time()
         _, iteration, converged = solve_residuals!(view(X, :, j), feM; kwargs...)
+        v1 = time()
+        # remove progress_bar if estimated time lower than 2sec
+	    if progress_bar && (j == 1) && ((v1 - v0) * size(X, 2) <= 2)
+	    	progress_bar = false
+	    end
+    	if progress_bar
+    		bar.current = j
+    	    showprogress(stdout, bar)
+    	end
         push!(iterations, iteration)
         push!(convergeds, converged)
-        if progress_bar
-        	bar.current = j
-        	showprogress(io, bar)
-	    end
     end
     if progress_bar
-    	print(io)
+    	end_progress(stdout, bar)
     end
     return X, iterations, convergeds
 end
