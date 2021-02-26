@@ -1,11 +1,11 @@
 # from Pkg.jl
 Base.@kwdef mutable struct MiniProgressBar
-    max::Int = 1.0
+    max::Int = 1
     header::String = ""
     color::Symbol = :white
     width::Int = 32
-    current::Int = 0.0
-    prev::Int = 0.0
+    current::Int = 0
+    prev::Int = 0
     has_shown::Bool = false
     time_shown::Float64 = 0.0
     percentage::Bool = true
