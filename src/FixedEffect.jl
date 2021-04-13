@@ -100,9 +100,8 @@ end
 
 function _group(ra, rp)
 	refs = Array{UInt32}(undef, size(ra))
-	fira = firstindex(ra)
-	firp = firstindex(rp)
 	hashes = Array{UInt32}(undef, length(rp))
+	firp = firstindex(rp)
 	n = 0
 	for i in eachindex(hashes)
 		if rp[i+firp-1] === missing
@@ -112,10 +111,11 @@ function _group(ra, rp)
 			hashes[i] = n
 		end
 	end
+	fira = firstindex(ra)
 	@inbounds for i in eachindex(refs)
 		refs[i] = hashes[ra[i+fira-1]-firp+1]
 	end
-	return GroupedArray{ndims(ra)}(refs, n)
+	return GroupedArray{ndims(refs)}(refs, n)
 end
 
 function group(args...)
