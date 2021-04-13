@@ -63,8 +63,10 @@ mutable struct GroupedArray{N} <: AbstractArray{UInt32, N}
 	n::Int                   # Number of potential values (= maximum(refs))
 end
 Base.size(g::GroupedArray) = size(g.refs)
-@propagate_inbounds Base.getindex(g::GroupedArray, i::Int) = getindex(g.refs, i)
-@propagate_inbounds Base.getindex(g::GroupedArray, I) = getindex(g.refs, I)
+@propagate_inbounds Base.getindex(g::GroupedArray, i::Number) = getindex(g.refs, i::Number)
+@propagate_inbounds Base.getindex(g::GroupedArray, I...) = getindex(g.refs, I...)
+Base.firstindex(g::GroupedArray) = firstindex(g.refs)
+Base.lastindex(g::GroupedArray) = lastindex(g.refs)
 
 group(xs::GroupedArray) = xs
 
