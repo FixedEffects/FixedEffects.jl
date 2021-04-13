@@ -2,6 +2,7 @@ using Test
 using FixedEffects
 using FixedEffects: GroupedArray, group, factorize!
 using StatsBase
+using PooledArrays, CategoricalArrays
 import Base: ==
 
 ==(x::FixedEffect{R,I}, y::FixedEffect{R,I}) where {R,I} =
@@ -86,4 +87,18 @@ end
     a = rand(N)
     g = group(a)
     @test factorize!(g) == g
+
+
+
+    g = [0, 1, 2, 3, 1, 2, 0]
+    @test group(g) == group(categorical(g))
+    @test group(g) == group(PooledArray(g))
+
+    g = [missing, 1, 2, 3, 1, 2, missing]
+    @test group(g) == group(categorical(g))
+    @test group(g) == group(PooledArray(g))
+
+    g = [missing, "a", "b", "c", "a", "a", "a"]
+    @test group(g) == group(categorical(g))
+    @test group(g) == group(PooledArray(g))
 end
