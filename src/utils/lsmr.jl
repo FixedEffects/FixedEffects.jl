@@ -62,7 +62,7 @@ function lsmr!(x, A, b, v, h, hbar;
     normArs = Tr[]
     conlim > 0 ? ctol = convert(Tr, inv(conlim)) : ctol = zero(Tr)
     # form the first vectors u and v (satisfy  β*u = b,  α*v = A'u)
-    u = b
+    u = mul!(b, A, x, -1, 1)
     β = norm(u)
     β > 0 && rmul!(u, inv(β))
     mul!(v, A', u, 1, 0)
@@ -224,7 +224,7 @@ function lsmr!(x, A, b, v, h, hbar;
     end
     converged = istop ∉ (3, 6, 7)
     tol = (atol, btol, ctol)
-    ch = ConvergenceHistory(converged, tol, 2 * iter, tests)
+    ch = ConvergenceHistory(converged, tol, iter, tests)
     return x, ch
 end
 

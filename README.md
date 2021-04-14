@@ -1,6 +1,5 @@
-[![Build Status](https://travis-ci.com/FixedEffects/FixedEffects.jl.svg?branch=master)](https://travis-ci.com/FixedEffects/FixedEffects.jl)
-[![pipeline status](https://gitlab.com/JuliaGPU/FixedEffects-jl/badges/master/pipeline.svg)](https://gitlab.com/JuliaGPU/FixedEffects-jl/commits/master)
-[![Coverage Status](https://coveralls.io/repos/FixedEffects/FixedEffects.jl/badge.svg?branch=master)](https://coveralls.io/r/FixedEffects/FixedEffects.jl?branch=master)
+[![Build status](https://github.com/FixedEffects/FixedEffects.jl/workflows/CI/badge.svg)](https://github.com/FixedEffects/FixedEffects.jl/actions)
+
 
 This package solves least squares problem with high dimensional fixed effects. For a matrix `D` of high dimensional fixed effects, it finds `b` and `ϵ` such that `y = D'b + ϵ` with `E[Dϵ] = 0`. 
 
