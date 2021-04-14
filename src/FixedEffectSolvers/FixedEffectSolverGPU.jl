@@ -188,7 +188,7 @@ function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverGPU{T}; tol::
 		feM.r .*= sqrt.(feM.weights)
 	end
 	copyto!(feM.b, feM.r)
-	fill!(feM.x, 0.0)
+	mul!(feM.x, feM.m', feM.b, 1.0, 0.0)
 	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
 	mul!(feM.r, feM.m, feM.x, -1.0, 1.0)
 	if !(feM.weights isa UnitWeights)
@@ -196,7 +196,7 @@ function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverGPU{T}; tol::
 	end
 	copyto!(feM.tmp, feM.r)
 	copyto!(r, feM.tmp)
-	return r, div(ch.mvps, 2), ch.isconverged
+	return r, ch.mvps + 1, ch.isconverged
 end
 
 function FixedEffects.solve_residuals!(X::AbstractMatrix, feM::FixedEffects.FixedEffectSolverGPU; progress_bar = true, kwargs...)

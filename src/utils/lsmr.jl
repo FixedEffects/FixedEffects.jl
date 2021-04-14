@@ -224,7 +224,7 @@ function lsmr!(x, A, b, v, h, hbar;
     end
     converged = istop ∉ (3, 6, 7)
     tol = (atol, btol, ctol)
-    ch = ConvergenceHistory(converged, tol, 2 * iter, tests)
+    ch = ConvergenceHistory(converged, tol, iter, tests)
     return x, ch
 end
 
