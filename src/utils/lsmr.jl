@@ -62,7 +62,7 @@ function lsmr!(x, A, b, v, h, hbar;
     normArs = Tr[]
     conlim > 0 ? ctol = convert(Tr, inv(conlim)) : ctol = zero(Tr)
     # form the first vectors u and v (satisfy  β*u = b,  α*v = A'u)
-    u = mul!(b, A, x, -1, 1)
+    u = b
     β = norm(u)
     β > 0 && rmul!(u, inv(β))
     mul!(v, A', u, 1, 0)
