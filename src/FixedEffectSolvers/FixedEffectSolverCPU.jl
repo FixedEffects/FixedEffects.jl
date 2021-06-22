@@ -154,14 +154,14 @@ function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverCPU{T}; tol::
 	end
 	copyto!(feM.b, feM.r)
 	if length(feM.x.x) == 1
-		mul!(feM.x, feM.m', feM.b, 1.0, 0.0)
+		mul!(feM.x, feM.m', feM.b, 1, 0)
 		iter, converged = 1, true
 	else
-		mul!(feM.x, feM.m', feM.b, 1.0, 0.0)
+		mul!(feM.x, feM.m', feM.b, 1, 0)
 		x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
 		iter, converged = ch.mvps + 1, ch.isconverged
 	end
-	mul!(feM.r, feM.m, feM.x, -1.0, 1.0)
+	mul!(feM.r, feM.m, feM.x, -1, 1)
 	if !(feM.weights isa UnitWeights)
 		feM.r ./=  sqrt.(feM.weights)
 	end
