@@ -79,13 +79,13 @@ function _group(xs, ::Nothing)
 	refs = Array{UInt32}(undef, size(xs))
 	invpool = Dict{eltype(xs), UInt32}()
 	n = UInt32(0)
-	z = UInt32(0)
-	@inbounds for i in eachindex(xs)
-		x = xs[i]
+	i = UInt32(0)
+	@inbounds for x in xs
+		i += 1
 		if x === missing
 			refs[i] = 0
 		else
-			lbl = get(invpool, x, z)
+			lbl = get(invpool, x, UInt32(0))
 			if !iszero(lbl)
 				refs[i] = lbl
 			else
