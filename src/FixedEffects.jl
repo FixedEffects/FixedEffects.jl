@@ -8,8 +8,8 @@ module FixedEffects
 using Base: @propagate_inbounds
 using LinearAlgebra
 using StatsBase
+using GroupedArrays
 using Requires
-using DataAPI
 using Printf
 
 ##############################################################################

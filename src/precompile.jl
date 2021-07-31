@@ -20,11 +20,4 @@ function _precompile_()
     
     Base.precompile(Tuple{Core.kwftype(typeof(FixedEffects.lsmr!)),NamedTuple{(:atol, :btol, :maxiter),Tuple{Float64,Float64,Int64}},typeof(FixedEffects.lsmr!),FixedEffects.FixedEffectCoefficients{Array{Float64,1}},FixedEffects.FixedEffectLinearMapCPU{Float64},Array{Float64,1},FixedEffects.FixedEffectCoefficients{Array{Float64,1}},FixedEffects.FixedEffectCoefficients{Array{Float64,1}},FixedEffects.FixedEffectCoefficients{Array{Float64,1}}})
     Base.precompile(Tuple{Core.kwftype(typeof(FixedEffects.lsmr!)),NamedTuple{(:atol, :btol, :maxiter),Tuple{Float64,Float64,Int64}},typeof(FixedEffects.lsmr!),FixedEffects.FixedEffectCoefficients{Array{Float32,1}},FixedEffects.FixedEffectLinearMapCPU{Float32},Array{Float32,1},FixedEffects.FixedEffectCoefficients{Array{Float32,1}},FixedEffects.FixedEffectCoefficients{Array{Float32,1}},FixedEffects.FixedEffectCoefficients{Array{Float32,1}}}) 
-
-
-
-    
-
-    Base.precompile(Tuple{typeof(group),Array{Union{Missing, String},1}})
-    Base.precompile(Tuple{typeof(group),Array{Union{Missing, String},1},Vararg{Any,N} where N})
 end
