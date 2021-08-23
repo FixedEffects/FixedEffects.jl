@@ -2,8 +2,6 @@
 ##
 ## FixedEffect
 ##
-## The categoricalarray may have pools that are never referred. Note that the pool does not appear in FixedEffect anyway.
-##
 ##############################################################################
 
 struct FixedEffect{R <: AbstractVector{<:Integer}, I <: AbstractVector{<:Real}}
@@ -19,7 +17,7 @@ end
 
 function FixedEffect(args...; interaction::AbstractVector = uweights(length(args[1])))
 	g = GroupedArray(args...)
-	FixedEffect{typeof(g.refs), typeof(interaction)}(g.refs, interaction, g.ngroups)
+	FixedEffect{typeof(g.groups), typeof(interaction)}(g.groups, interaction, g.ngroups)
 end
 
 Base.show(io::IO, ::FixedEffect) = print(io, "Fixed Effects")
