@@ -132,6 +132,7 @@ end
 
 
 function scale!(scale::AbstractVector, refs::AbstractVector, interaction::AbstractVector, weights::AbstractVector)
+        fill!(scale, 0)
 	@inbounds @simd for i in eachindex(refs)
 		scale[refs[i]] += abs2(interaction[i]) * weights[i]
 	end
@@ -154,8 +155,12 @@ function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverCPU{T}; tol::
 	end
 	copyto!(feM.b, feM.r)
 	mul!(feM.x, feM.m', feM.b, 1, 0)
-	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
-	iter, converged = ch.mvps + 1, ch.isconverged
+        if length(feM.x.x) > 1
+            x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
+	    iter, converged = ch.mvps + 1, ch.isconverged
+        else
+            iter, converged = 1, true
+        end
 	mul!(feM.r, feM.m, feM.x, -1, 1)
 	if !(feM.weights isa UnitWeights)
 		feM.r ./=  sqrt.(feM.weights)
