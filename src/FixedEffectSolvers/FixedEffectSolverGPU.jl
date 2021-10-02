@@ -146,6 +146,7 @@ end
 
 function scale!(scale::CuVector, refs::CuVector, interaction::CuVector, weights::CuVector, nthreads::Integer)
 	nblocks = cld(length(refs), nthreads) 
+        fill!(scale, 0)
 	@cuda threads=nthreads blocks=nblocks scale_kernel!(scale, refs, interaction, weights)
 	@cuda threads=nthreads blocks=nblocks inv_kernel!(scale)
 end
