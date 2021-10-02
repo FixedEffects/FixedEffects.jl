@@ -22,15 +22,6 @@ r_ols =  [-0.2015993617092453,  0.2015993617092464, -0.2015993617092463,  0.2015
 (c, iter, conv) = solve_residuals!([x x], fes)
 
 
-# test update_weights
-weights = ones(10)
-feM = FixedEffects.AbstractFixedEffectSolver{Float64}(fes, Weights(weights), Val{:cpu})
-weights = Weights([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-FixedEffects.update_weights!(feM, weights) 
-solve_residuals!(deepcopy(x), feM)[1] ≈ solve_residuals!(deepcopy(x), fes, weights)[1]
-
-
-
 method_s = [:cpu]
 if FixedEffects.has_CUDA()
 	push!(method_s, :gpu)
@@ -45,3 +36,15 @@ end
 fe = FixedEffect([1, 2])
 @test_throws "FixedEffects must have the same length as y" ỹ = solve_residuals!(ones(100), [fe])
 
+
+# test update_weights
+weights = ones(10)
+fes = [FixedEffect(p1)]
+feM = FixedEffects.AbstractFixedEffectSolver{Float64}(fes, Weights(weights), Val{:cpu})
+weights = Weights([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+FixedEffects.update_weights!(feM, weights) 
+solve_residuals!(deepcopy(x), feM)[1] ≈ solve_residuals!(deepcopy(x), fes, weights)[1]
+
+weights = Weights(reverse([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]))
+FixedEffects.update_weights!(feM, weights) 
+solve_residuals!(deepcopy(x), feM)[1] ≈ solve_residuals!(deepcopy(x), fes, weights)[1]
