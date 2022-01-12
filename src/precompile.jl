@@ -7,7 +7,7 @@ function _precompile_()
 
     Base.precompile(Tuple{Type{FixedEffects.AbstractFixedEffectSolver{Float64}},Array{FixedEffects.FixedEffect,1},Weights{Float64,Float64,Array{Float64,1}},Type{Val{:cpu}}})
     Base.precompile(Tuple{Type{FixedEffects.AbstractFixedEffectSolver{Float64}},Array{FixedEffects.FixedEffect,1},UnitWeights{Float64},Type{Val{:cpu}}})
-    Base.precompile(Tuple{Type{FixedEffects.AbstractFixedEffectSolver{Float32}},Array{FixedEffects.FixedEffect,1},StatsBase.Weights{Float64,Float64,Array{Float64,1}},Type{Val{:cpu}},Int64})
+    Base.precompile(Tuple{Type{FixedEffects.AbstractFixedEffectSolver{Float32}},Array{FixedEffects.FixedEffect,1},Weights{Float64,Float64,Array{Float64,1}},Type{Val{:cpu}},Int64})
     Base.precompile(Tuple{typeof(FixedEffects.update_weights!),FixedEffects.FixedEffectSolverCPU{Float64},Weights{Int64,Int64,Array{Int64,1}}})
 
 
