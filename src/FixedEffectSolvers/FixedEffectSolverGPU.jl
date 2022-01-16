@@ -17,14 +17,14 @@ CUDA.cu(T::Type, w::UnitWeights) = fill!(CuVector{T}(undef, length(w)), w[1])
 CUDA.cu(T::Type, w::AbstractVector) = CuVector{T}(convert(Vector{T}, w))
 
 ##############################################################################
-##We
+##
 ## FixedEffectLinearMap on the GPU (code by Paul Schrimpf)
 ##
 ## Model matrix of categorical variables
 ## mutiplied by diag(1/sqrt(∑w * interaction^2, ..., ∑w * interaction^2) (Jacobi preconditoner)
 ##
 ## We define these methods used in lsmr! (duck typing):
-## eltyp
+## eltype
 ## size
 ## mul!
 ##
