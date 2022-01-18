@@ -26,7 +26,7 @@ function FixedEffectLinearMapCPU{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:cpu}
 	return FixedEffectLinearMapCPU{T}(fes, scales, caches, fecoefs, nthreads)
 end
 
-LinearAlgebra.adjoint(fem::FixedEffectLinearMapCPU) = Adjoint(fem)
+Base.adjoint(fem::FixedEffectLinearMapCPU) = Adjoint(fem)
 
 function Base.size(fem::FixedEffectLinearMapCPU, dim::Integer)
 	(dim == 1) ? length(fem.fes[1].refs) : (dim == 2) ? sum(fe.n for fe in fem.fes) : 1

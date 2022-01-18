@@ -24,7 +24,7 @@ CUDA.cu(T::Type, w::AbstractVector) = CuVector{T}(convert(Vector{T}, w))
 ## mutiplied by diag(1/sqrt(∑w * interaction^2, ..., ∑w * interaction^2) (Jacobi preconditoner)
 ##
 ## We define these methods used in lsmr! (duck typing):
-## eltyp
+## eltype
 ## size
 ## mul!
 ##
@@ -44,7 +44,7 @@ function FixedEffectLinearMapGPU{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:gpu}
 	return FixedEffectLinearMapGPU{T}(fes, scales, caches, nthreads)
 end
 
-LinearAlgebra.adjoint(fem::FixedEffectLinearMapGPU) = Adjoint(fem)
+Base.adjoint(fem::FixedEffectLinearMapGPU) = Adjoint(fem)
 
 function Base.size(fem::FixedEffectLinearMapGPU, dim::Integer)
 	(dim == 1) ? length(fem.fes[1].refs) : (dim == 2) ? sum(fe.n for fe in fem.fes) : 1

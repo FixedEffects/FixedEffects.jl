@@ -5,12 +5,13 @@ module FixedEffects
 ## Dependencies
 ##
 ##############################################################################
+
 using Base: @propagate_inbounds
-using LinearAlgebra
-using StatsBase
-using GroupedArrays
-using Requires
-using Printf
+using LinearAlgebra: LinearAlgebra, Adjoint, mul!, rmul!, norm, axpy!
+using StatsBase: AbstractWeights, UnitWeights, Weights, uweights
+using GroupedArrays: GroupedArray
+using Requires: @require
+using Printf: @printf
 
 ##############################################################################
 ##
