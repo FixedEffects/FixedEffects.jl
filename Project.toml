@@ -1,6 +1,6 @@
 name = "FixedEffects"
 uuid = "c8885935-8500-56a7-9867-7708b20db0eb"
-version = "2.1.0"
+version = "2.1.1"
 
 [deps]
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
