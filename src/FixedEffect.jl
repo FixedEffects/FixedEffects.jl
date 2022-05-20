@@ -16,7 +16,7 @@ struct FixedEffect{R <: AbstractVector{<:Integer}, I <: AbstractVector{<:Real}}
 end
 
 function FixedEffect(args...; interaction::AbstractVector = uweights(length(args[1])))
-	g = GroupedArray(args...)
+	g = GroupedArray(args..., sort = nothing)
 	FixedEffect{typeof(g.groups), typeof(interaction)}(g.groups, interaction, g.ngroups)
 end
 
