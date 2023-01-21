@@ -8,13 +8,13 @@ CUDA.allowscalar(false)
 
 # https://github.com/JuliaGPU/CUDA.jl/issues/142
 cuzeros(T::Type, n::Integer) = fill!(CuVector{T}(undef, n), zero(T))
-function CUDA.cu(T::Type, fe::FixedEffect)
+function cu(T::Type, fe::FixedEffect)
 	refs = CuArray(fe.refs)
 	interaction = cu(T, fe.interaction)
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
 end
-CUDA.cu(T::Type, w::UnitWeights) = fill!(CuVector{T}(undef, length(w)), w[1])
-CUDA.cu(T::Type, w::AbstractVector) = CuVector{T}(convert(Vector{T}, w))
+cu(T::Type, w::UnitWeights) = fill!(CuVector{T}(undef, length(w)), w[1])
+cu(T::Type, w::AbstractVector) = CuVector{T}(convert(Vector{T}, w))
 
 ##############################################################################
 ##
