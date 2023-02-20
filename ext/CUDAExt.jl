@@ -12,13 +12,13 @@ CUDA.allowscalar(false)
 
 # https://github.com/JuliaGPU/CUDA.jl/issues/142
 cuzeros(T::Type, n::Integer) = fill!(CuVector{T}(undef, n), zero(T))
-function cu(T::Type, fe::FixedEffect)
+function _cu(T::Type, fe::FixedEffect)
 	refs = CuArray(fe.refs)
-	interaction = cu(T, fe.interaction)
+	interaction = _cu(T, fe.interaction)
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
 end
-cu(T::Type, w::UnitWeights) = fill!(CuVector{T}(undef, length(w)), w[1])
-cu(T::Type, w::AbstractVector) = CuVector{T}(convert(Vector{T}, w))
+_cu(T::Type, w::UnitWeights) = fill!(CuVector{T}(undef, length(w)), w[1])
+_cu(T::Type, w::AbstractVector) = CuVector{T}(convert(Vector{T}, w))
 
 ##############################################################################
 ##
@@ -42,7 +42,7 @@ mutable struct FixedEffectLinearMapGPU{T}
 end
 
 function FixedEffectLinearMapGPU{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:gpu}}, nthreads) where {T}
-	fes = [cu(T, fe) for fe in fes]
+	fes = [_cu(T, fe) for fe in fes]
 	scales = [cuzeros(T, fe.n) for fe in fes]
 	caches = [cuzeros(T, length(fes[1].interaction)) for fe in fes]
 	return FixedEffectLinearMapGPU{T}(fes, scales, caches, nthreads)
@@ -136,7 +136,7 @@ end
 
 
 function update_weights!(feM::FixedEffectSolverGPU{T}, weights::AbstractWeights) where {T}
-	weights = cu(T, weights)
+	weights = _cu(T, weights)
 	nthreads = feM.m.nthreads
 	for (scale, fe) in zip(feM.m.scales, feM.m.fes)
 		scale!(scale, fe.refs, fe.interaction, weights, nthreads)
