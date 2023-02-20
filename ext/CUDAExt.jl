@@ -11,7 +11,7 @@ CUDA.allowscalar(false)
 ##############################################################################
 
 # https://github.com/JuliaGPU/CUDA.jl/issues/142
-cuzeros(T::Type, n::Integer) = fill!(CuVector{T}(undef, n), zero(T))
+_cuzeros(T::Type, n::Integer) = fill!(CuVector{T}(undef, n), zero(T))
 function _cu(T::Type, fe::FixedEffect)
 	refs = CuArray(fe.refs)
 	interaction = _cu(T, fe.interaction)
@@ -43,8 +43,8 @@ end
 
 function FixedEffectLinearMapGPU{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:gpu}}, nthreads) where {T}
 	fes = [_cu(T, fe) for fe in fes]
-	scales = [cuzeros(T, fe.n) for fe in fes]
-	caches = [cuzeros(T, length(fes[1].interaction)) for fe in fes]
+	scales = [_cuzeros(T, fe.n) for fe in fes]
+	caches = [_cuzeros(T, length(fes[1].interaction)) for fe in fes]
 	return FixedEffectLinearMapGPU{T}(fes, scales, caches, nthreads)
 end
 
@@ -124,14 +124,14 @@ end
 	
 function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:gpu}}, nthreads = 256) where {T}
 	m = FixedEffectLinearMapGPU{T}(fes, Val{:gpu}, nthreads)
-	b = cuzeros(T, length(weights))
-	r = cuzeros(T, length(weights))
-	x = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
-	v = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
-	h = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
-	hbar = FixedEffectCoefficients([cuzeros(T, fe.n) for fe in fes])
+	b = _cuzeros(T, length(weights))
+	r = _cuzeros(T, length(weights))
+	x = FixedEffectCoefficients([_cuzeros(T, fe.n) for fe in fes])
+	v = FixedEffectCoefficients([_cuzeros(T, fe.n) for fe in fes])
+	h = FixedEffectCoefficients([_cuzeros(T, fe.n) for fe in fes])
+	hbar = FixedEffectCoefficients([_cuzeros(T, fe.n) for fe in fes])
 	tmp = zeros(T, length(weights))
-	update_weights!(FixedEffectSolverGPU{T}(m, cuzeros(T, length(weights)), b, r, x, v, h, hbar, tmp, fes), weights)
+	update_weights!(FixedEffectSolverGPU{T}(m, _cuzeros(T, length(weights)), b, r, x, v, h, hbar, tmp, fes), weights)
 end
 
 
