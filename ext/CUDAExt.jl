@@ -1,4 +1,8 @@
-using .CUDA
+module CudaExt
+using StatsBase: AbstractWeights, UnitWeights
+using LinearAlgebra: LinearAlgebra, Adjoint, mul!, rmul!
+using FixedEffects
+using CUDA
 CUDA.allowscalar(false)
 ##############################################################################
 ##
@@ -224,4 +228,7 @@ function solve_coefficients!(r::AbstractVector, feM::FixedEffectSolverGPU{T}; to
 	end
 	x = Vector{eltype(r)}[collect(x) for x in feM.x.x]
 	full(normalize!(x, feM.fes; tol = tol, maxiter = maxiter), feM.fes), div(ch.mvps, 2), ch.isconverged
+end
+
+
 end
