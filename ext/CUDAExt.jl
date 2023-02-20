@@ -1,7 +1,7 @@
 module CudaExt
 using StatsBase: AbstractWeights, UnitWeights
 using LinearAlgebra: LinearAlgebra, Adjoint, mul!, rmul!
-using FixedEffects
+using FixedEffects: FixedEffect, FixedEffectCoefficients
 using CUDA
 CUDA.allowscalar(false)
 ##############################################################################
