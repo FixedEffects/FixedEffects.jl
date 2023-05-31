@@ -1,4 +1,4 @@
-module CudaExt
+module CUDAExt
 using StatsBase: AbstractWeights, UnitWeights
 using LinearAlgebra: LinearAlgebra, Adjoint, mul!, rmul!
 using FixedEffects: FixedEffect, FixedEffectCoefficients
