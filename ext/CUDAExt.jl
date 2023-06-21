@@ -1,9 +1,8 @@
-module CudaExt
-using StatsBase: AbstractWeights, UnitWeights
-using LinearAlgebra: LinearAlgebra, Adjoint, mul!, rmul!
-using FixedEffects: FixedEffect, FixedEffectCoefficients
-using CUDA
+module CUDAExt
+using FixedEffects, CUDA
 CUDA.allowscalar(false)
+using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!
+
 ##############################################################################
 ##
 ## Conversion FixedEffect between CPU and GPU
@@ -204,7 +203,7 @@ function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverGPU{T}; tol::
 	return r, ch.mvps + 1, ch.isconverged
 end
 
-function FixedEffects.solve_residuals!(X::AbstractMatrix, feM::FixedEffects.FixedEffectSolverGPU; progress_bar = true, kwargs...)
+function FixedEffects.solve_residuals!(X::AbstractMatrix, feM::FixedEffectSolverGPU; progress_bar = true, kwargs...)
     iterations = Int[]
     convergeds = Bool[]
     for j in 1:size(X, 2)

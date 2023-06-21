@@ -23,7 +23,7 @@ include("utils/progressbar.jl")
 include("FixedEffect.jl")
 include("AbstractFixedEffectSolver.jl")
 include("FixedEffectSolvers/LinearMap.jl")
-include("FixedEffectSolvers/CPU.jl")
+include("FixedEffectSolvers/SolverCPU.jl")
 
 
 has_CUDA() = false

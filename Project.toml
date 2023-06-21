@@ -9,7 +9,6 @@ StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 GroupedArrays = "6407cd72-fade-4a84-8a1e-56e431fc1533"
 
 [compat]
-Requires = "1"
 StatsBase = "0.33"
 GroupedArrays = "0.3"
 julia = "1.9"
