@@ -26,12 +26,6 @@ include("FixedEffectSolvers/LinearMap.jl")
 include("FixedEffectSolvers/SolverCPU.jl")
 
 
-has_CUDA() = false
-if !isdefined(Base, :get_extension)
-	has_CUDA() = true
-	include("../ext/CUDAExt.jl")
-end
-
 
 
 include("precompile.jl")
