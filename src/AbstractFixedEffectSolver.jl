@@ -6,6 +6,7 @@
 ##
 ##############################################################################
 abstract type AbstractFixedEffectSolver{T} end
+works_with_view(::AbstractFixedEffectSolver) = false
 
 """
 `solve_residuals!(y, fes, w; method = :cpu, double_precision = true, tol = 1e-8, maxiter = 10000, )`

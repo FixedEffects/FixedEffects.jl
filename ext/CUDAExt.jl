@@ -10,7 +10,6 @@ CUDA.allowscalar(false)
 ##############################################################################
 
 # https://github.com/JuliaGPU/CUDA.jl/issues/142
-_cuzeros(T::Type, n::Integer) = fill!(CuVector{T}(undef, n), zero(T))
 function _cu(T::Type, fe::FixedEffect)
 	refs = CuArray(fe.refs)
 	interaction = _cu(T, fe.interaction)
@@ -42,8 +41,8 @@ end
 
 function FixedEffectLinearMapCUDA{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:CUDA}}, nthreads) where {T}
 	fes = [_cu(T, fe) for fe in fes]
-	scales = [_cuzeros(T, fe.n) for fe in fes]
-	caches = [_cuzeros(T, length(fes[1].interaction)) for fe in fes]
+	scales = [CUDA.zeros(T, fe.n) for fe in fes]
+	caches = [CUDA.zeros(T, length(fes[1].interaction)) for fe in fes]
 	return FixedEffectLinearMapCUDA{T}(fes, scales, caches, nthreads)
 end
 
@@ -92,39 +91,34 @@ mutable struct FixedEffectSolverCUDA{T} <: FixedEffects.AbstractFixedEffectSolve
 	tmp::Vector{T} # used to convert AbstractVector to Vector{T}
 	fes::Vector{<:FixedEffect}
 end
-	
-
-FixedEffects.works_with_view(x::FixedEffectSolverCUDA) = false
 
 
 function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:CUDA}}, nthreads = 256) where {T}
 	m = FixedEffectLinearMapCUDA{T}(fes, Val{:CUDA}, nthreads)
-	b = _cuzeros(T, length(weights))
-	r = _cuzeros(T, length(weights))
-	x = FixedEffectCoefficients([_cuzeros(T, fe.n) for fe in fes])
-	v = FixedEffectCoefficients([_cuzeros(T, fe.n) for fe in fes])
-	h = FixedEffectCoefficients([_cuzeros(T, fe.n) for fe in fes])
-	hbar = FixedEffectCoefficients([_cuzeros(T, fe.n) for fe in fes])
+	b = CUDA.zeros(T, length(weights))
+	r = CUDA.zeros(T, length(weights))
+	x = FixedEffectCoefficients([CUDA.zeros(T, fe.n) for fe in fes])
+	v = FixedEffectCoefficients([CUDA.zeros(T, fe.n) for fe in fes])
+	h = FixedEffectCoefficients([CUDA.zeros(T, fe.n) for fe in fes])
+	hbar = FixedEffectCoefficients([CUDA.zeros(T, fe.n) for fe in fes])
 	tmp = zeros(T, length(weights))
-	FixedEffects.update_weights!(FixedEffectSolverCUDA{T}(m, _cuzeros(T, length(weights)), b, r, x, v, h, hbar, tmp, fes), weights)
+	FixedEffects.update_weights!(FixedEffectSolverCUDA{T}(m, CUDA.zeros(T, length(weights)), b, r, x, v, h, hbar, tmp, fes), weights)
 end
 
 function FixedEffects.update_weights!(feM::FixedEffectSolverCUDA{T}, weights::AbstractWeights) where {T}
-	weights = _cu(T, weights)
-	nthreads = feM.m.nthreads
+	copyto!(feM.weights, _cu(T, weights))
 	for (scale, fe) in zip(feM.m.scales, feM.m.fes)
-		scale!(scale, fe.refs, fe.interaction, weights, nthreads)
+		scale!(scale, fe.refs, fe.interaction, feM.weights, feM.m.nthreads)
 	end
 	for (cache, scale, fe) in zip(feM.m.caches, feM.m.scales, feM.m.fes)
-		cache!(cache, fe.refs, fe.interaction, weights, scale, nthreads)
+		cache!(cache, fe.refs, fe.interaction, feM.weights, scale, feM.m.nthreads)
 	end	
-	feM.weights = weights
 	return feM
 end
 
 function scale!(scale::CuVector, refs::CuVector, interaction::CuVector, weights::CuVector, nthreads::Integer)
 	nblocks = cld(length(refs), nthreads) 
-        fill!(scale, 0)
+    fill!(scale, 0)
 	@cuda threads=nthreads blocks=nblocks scale_kernel!(scale, refs, interaction, weights)
 	@cuda threads=nthreads blocks=nblocks inv_kernel!(scale)
 end
