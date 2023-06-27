@@ -1,4 +1,3 @@
-using Test, StatsBase, CUDA, FixedEffects, PooledArrays, CategoricalArrays
 
 
 p1 = repeat(1:5, inner = 2)
@@ -24,8 +23,12 @@ r_ols =  [-0.2015993617092453,  0.2015993617092464, -0.2015993617092463,  0.2015
 
 method_s = [:cpu]
 if CUDA.functional()
-	push!(method_s, :gpu)
+	push!(method_s, :CUA)
 end
+if Metal.functional()
+	push!(method_s, :Metal)
+end
+@show Metal.functional()
 for method in method_s
 	println("$method Float32")
 	local (r, iter, conv) = solve_residuals!(deepcopy(x),fes, method=method, double_precision = false)

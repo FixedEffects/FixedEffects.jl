@@ -1,7 +1,7 @@
 module CUDAExt
 using FixedEffects, CUDA
+using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!,  lsmr!, AbstractFixedEffectLinearMap
 CUDA.allowscalar(false)
-using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!
 
 ##############################################################################
 ##
@@ -33,41 +33,22 @@ _cu(T::Type, w::AbstractVector) = CuVector{T}(convert(Vector{T}, w))
 ##
 ##############################################################################
 
-mutable struct FixedEffectLinearMapGPU{T}
+mutable struct FixedEffectLinearMapCUDA{T} <: AbstractFixedEffectLinearMap{T}
 	fes::Vector{<:FixedEffect}
 	scales::Vector{<:AbstractVector}
 	caches::Vector{<:AbstractVector}
 	nthreads::Int
 end
 
-function FixedEffectLinearMapGPU{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:gpu}}, nthreads) where {T}
+function FixedEffectLinearMapCUDA{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:CUDA}}, nthreads) where {T}
 	fes = [_cu(T, fe) for fe in fes]
 	scales = [_cuzeros(T, fe.n) for fe in fes]
 	caches = [_cuzeros(T, length(fes[1].interaction)) for fe in fes]
-	return FixedEffectLinearMapGPU{T}(fes, scales, caches, nthreads)
-end
-
-Base.adjoint(fem::FixedEffectLinearMapGPU) = Adjoint(fem)
-
-function Base.size(fem::FixedEffectLinearMapGPU, dim::Integer)
-	(dim == 1) ? length(fem.fes[1].refs) : (dim == 2) ? sum(fe.n for fe in fem.fes) : 1
-end
-
-Base.eltype(x::FixedEffectLinearMapGPU{T}) where {T} = T
-
-function LinearAlgebra.mul!(fecoefs::FixedEffectCoefficients, 
-	Cfem::Adjoint{T, FixedEffectLinearMapGPU{T}},
-	y::AbstractVector, α::Number, β::Number) where {T}
-	fem = adjoint(Cfem)
-	rmul!(fecoefs, β)
-	for (fecoef, fe, cache) in zip(fecoefs.x, fem.fes, fem.caches)
-		gather!(fecoef, fe.refs, α, y, cache, fem.nthreads)
-	end
-	return fecoefs
+	return FixedEffectLinearMapCUDA{T}(fes, scales, caches, nthreads)
 end
 
 
-function gather!(fecoef::CuVector, refs::CuVector, α::Number, y::CuVector, cache::CuVector, nthreads::Integer)
+function FixedEffects.gather!(fecoef::CuVector, refs::CuVector, α::Number, y::CuVector, cache::CuVector, nthreads::Integer)
 	nblocks = cld(length(y), nthreads) 
 	@cuda threads=nthreads blocks=nblocks gather_kernel!(fecoef, refs, α, y, cache)    
 end
@@ -80,16 +61,7 @@ function gather_kernel!(fecoef, refs, α, y, cache)
 	end
 end
 
-function LinearAlgebra.mul!(y::AbstractVector, fem::FixedEffectLinearMapGPU, 
-			  fecoefs::FixedEffectCoefficients, α::Number, β::Number)
-	rmul!(y, β)
-	for (fecoef, fe, cache) in zip(fecoefs.x, fem.fes, fem.caches)
-		scatter!(y, α, fecoef, fe.refs, cache, fem.nthreads)
-	end
-	return y
-end
-
-function scatter!(y::CuVector, α::Number, fecoef::CuVector, refs::CuVector, cache::CuVector, nthreads::Integer)
+function FixedEffects.scatter!(y::CuVector, α::Number, fecoef::CuVector, refs::CuVector, cache::CuVector, nthreads::Integer)
 	nblocks = cld(length(y), nthreads)
 	@cuda threads=nthreads blocks=nblocks scatter_kernel!(y, α, fecoef, refs, cache)
 end
@@ -108,8 +80,8 @@ end
 ##
 ##############################################################################
 
-mutable struct FixedEffectSolverGPU{T} <: AbstractFixedEffectSolver{T}
-	m::FixedEffectLinearMapGPU{T}
+mutable struct FixedEffectSolverCUDA{T} <: FixedEffects.AbstractFixedEffectSolver{T}
+	m::FixedEffectLinearMapCUDA{T}
 	weights::CuVector{T}
 	b::CuVector{T}
 	r::CuVector{T}
@@ -121,8 +93,12 @@ mutable struct FixedEffectSolverGPU{T} <: AbstractFixedEffectSolver{T}
 	fes::Vector{<:FixedEffect}
 end
 	
-function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:gpu}}, nthreads = 256) where {T}
-	m = FixedEffectLinearMapGPU{T}(fes, Val{:gpu}, nthreads)
+
+FixedEffects.works_with_view(x::FixedEffectSolverCUDA) = false
+
+
+function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:CUDA}}, nthreads = 256) where {T}
+	m = FixedEffectLinearMapCUDA{T}(fes, Val{:CUDA}, nthreads)
 	b = _cuzeros(T, length(weights))
 	r = _cuzeros(T, length(weights))
 	x = FixedEffectCoefficients([_cuzeros(T, fe.n) for fe in fes])
@@ -130,11 +106,10 @@ function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::Abstr
 	h = FixedEffectCoefficients([_cuzeros(T, fe.n) for fe in fes])
 	hbar = FixedEffectCoefficients([_cuzeros(T, fe.n) for fe in fes])
 	tmp = zeros(T, length(weights))
-	update_weights!(FixedEffectSolverGPU{T}(m, _cuzeros(T, length(weights)), b, r, x, v, h, hbar, tmp, fes), weights)
+	FixedEffects.update_weights!(FixedEffectSolverCUDA{T}(m, _cuzeros(T, length(weights)), b, r, x, v, h, hbar, tmp, fes), weights)
 end
 
-
-function update_weights!(feM::FixedEffectSolverGPU{T}, weights::AbstractWeights) where {T}
+function FixedEffects.update_weights!(feM::FixedEffectSolverCUDA{T}, weights::AbstractWeights) where {T}
 	weights = _cu(T, weights)
 	nthreads = feM.m.nthreads
 	for (scale, fe) in zip(feM.m.scales, feM.m.fes)
@@ -170,7 +145,6 @@ function inv_kernel!(scale)
 	end
 end
 
-
 function cache!(cache::CuVector, refs::CuVector, interaction::CuVector, weights::CuVector, scale::CuVector, nthreads::Integer)
 	nblocks = cld(length(cache), nthreads) 
 	@cuda threads=nthreads blocks=nblocks cache!_kernel!(cache, refs, interaction, weights, scale)
@@ -184,50 +158,6 @@ function cache!_kernel!(cache, refs, interaction, weights, scale)
 	end
 end
 
-
-function solve_residuals!(r::AbstractVector, feM::FixedEffectSolverGPU{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
-	copyto!(feM.tmp, r)
-	copyto!(feM.r, feM.tmp)
-	if !(feM.weights isa UnitWeights)
-		feM.r .*= sqrt.(feM.weights)
-	end
-	copyto!(feM.b, feM.r)
-	mul!(feM.x, feM.m', feM.b, 1, 0)
-	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
-	mul!(feM.r, feM.m, feM.x, -1, 1)
-	if !(feM.weights isa UnitWeights)
-		feM.r ./=  sqrt.(feM.weights)
-	end
-	copyto!(feM.tmp, feM.r)
-	copyto!(r, feM.tmp)
-	return r, ch.mvps + 1, ch.isconverged
-end
-
-function FixedEffects.solve_residuals!(X::AbstractMatrix, feM::FixedEffectSolverGPU; progress_bar = true, kwargs...)
-    iterations = Int[]
-    convergeds = Bool[]
-    for j in 1:size(X, 2)
-        _, iteration, converged = solve_residuals!(view(X, :, j), feM; kwargs...)
-        push!(iterations, iteration)
-        push!(convergeds, converged)
-    end
-    return X, iterations, convergeds
-end
-
-function solve_coefficients!(r::AbstractVector, feM::FixedEffectSolverGPU{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
-	copyto!(feM.tmp, r)
-	copyto!(feM.b, feM.tmp)
-	if !(feM.weights isa UnitWeights)
-		feM.b .*= sqrt.(feM.weights)
-	end
-	fill!(feM.x, 0.0)
-	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
-	for (x, scale) in zip(feM.x.x, feM.m.scales)
-		x .*=  scale
-	end
-	x = Vector{eltype(r)}[collect(x) for x in feM.x.x]
-	full(normalize!(x, feM.fes; tol = tol, maxiter = maxiter), feM.fes), div(ch.mvps, 2), ch.isconverged
-end
 
 
 end

@@ -22,8 +22,9 @@ include("utils/progressbar.jl")
 
 include("FixedEffect.jl")
 include("AbstractFixedEffectSolver.jl")
-include("FixedEffectSolvers/LinearMap.jl")
-include("FixedEffectSolvers/SolverCPU.jl")
+include("FixedEffectCoefficients.jl")
+include("AbstractFixedEffectLinearMap.jl")
+include("SolverCPU.jl")
 
 
 

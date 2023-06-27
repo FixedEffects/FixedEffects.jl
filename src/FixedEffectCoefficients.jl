@@ -46,3 +46,7 @@ function LinearAlgebra.axpy!(α::Number, fecoef1::FixedEffectCoefficients, fecoe
 	end
 	return fecoef2
 end
+
+
+
+

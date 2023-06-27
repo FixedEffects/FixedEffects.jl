@@ -1,6 +1,7 @@
 tests = ["types.jl", "solve.jl"]
 println("Running tests:")
 
+using Test, StatsBase, CUDA, Metal, FixedEffects, PooledArrays, CategoricalArrays
 for test in tests
 	try
 		include(test)
