@@ -1,1 +1,1 @@
-@time solve_residuals!(deepcopy(x), fes; method = :Metal)
+@time gather!(y, refs, x)

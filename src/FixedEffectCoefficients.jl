@@ -15,36 +15,43 @@ struct FixedEffectCoefficients{U <: AbstractVector}
 	x::Vector{U}
 end
 
-Base.eltype(fecoef::FixedEffectCoefficients{U}) where {U} = eltype(U)
-Base.length(fecoef::FixedEffectCoefficients) = sum(length(x) for x in fecoef.x)
-LinearAlgebra.norm(fecoef::FixedEffectCoefficients) = sqrt(sum(sum(abs2, x) for x in fecoef.x))
+Base.eltype(fecoefs::FixedEffectCoefficients{U}) where {U} = eltype(U)
+Base.length(fecoefs::FixedEffectCoefficients) = sum(length(x) for x in fecoefs.x)
 
-function Base.fill!(fecoef::FixedEffectCoefficients, α::Number)
-	for x in fecoef.x
+function LinearAlgebra.norm(fecoefs::FixedEffectCoefficients)
+	out = zero(eltype(fecoefs))
+	for x in fecoefs.x
+		out += sum(abs2, x)
+	end
+	sqrt(out)
+end
+
+function Base.fill!(fecoefs::FixedEffectCoefficients, α::Number)
+	for x in fecoefs.x
 		fill!(x, α)
 	end
-	return fecoef
+	return fecoefs
 end
 
-function LinearAlgebra.rmul!(fecoef::FixedEffectCoefficients, α::Number)
-	for x in fecoef.x
+function LinearAlgebra.rmul!(fecoefs::FixedEffectCoefficients, α::Number)
+	for x in fecoefs.x
 		rmul!(x, α)
 	end
-	return fecoef
+	return fecoefs
 end
 
-function Base.copyto!(fecoef1::FixedEffectCoefficients, fecoef2::FixedEffectCoefficients)
-	for (x1, x2) in zip(fecoef1.x, fecoef2.x)
+function Base.copyto!(fecoefs1::FixedEffectCoefficients, fecoefs2::FixedEffectCoefficients)
+	for (x1, x2) in zip(fecoefs1.x, fecoefs2.x)
 		copyto!(x1, x2)
 	end
-	return fecoef1
+	return fecoefs1
 end
 
-function LinearAlgebra.axpy!(α::Number, fecoef1::FixedEffectCoefficients, fecoef2::FixedEffectCoefficients)
-	for (x1, x2) in zip(fecoef1.x, fecoef2.x)
+function LinearAlgebra.axpy!(α::Number, fecoefs1::FixedEffectCoefficients, fecoefs2::FixedEffectCoefficients)
+	for (x1, x2) in zip(fecoefs1.x, fecoefs2.x)
 		axpy!(α, x1, x2)
 	end
-	return fecoef2
+	return fecoefs2
 end
 
 

@@ -55,20 +55,20 @@ function lsmr!(x, A, b, v, h, hbar;
     length(h) == n || error("h has length $(length(h)) but should have length $n")
     length(hbar) == n || error("hbar has length $(length(hbar)) but should have length $n")
     length(b) == m || error("b has length $(length(b)) but should have length $m")
-
+    
     T = Base.promote_op(/, eltype(b), eltype(A))
     Tr = real(T)
     normrs = Tr[]
     normArs = Tr[]
     conlim > 0 ? ctol = convert(Tr, inv(conlim)) : ctol = zero(Tr)
     # form the first vectors u and v (satisfy  β*u = b,  α*v = A'u)
+    # form the first vectors u and v (satisfy  β*u = b,  α*v = A'u)    
     u = mul!(b, A, x, -1, 1)
-    β = norm(u)
-    β > 0 && rmul!(u, inv(β))
+    β = norm(u)    
+    β > 0 && rmul!(u, inv(β))    
     mul!(v, A', u, 1, 0)
     α = norm(v)
     α > 0 && rmul!(v, inv(α))
-
     # Initialize variables for 1st iteration.
     ζbar = α * β
     αbar = α
@@ -88,7 +88,6 @@ function lsmr!(x, A, b, v, h, hbar;
     θtilde  = zero(Tr)
     ζ = zero(Tr)
     d = zero(Tr)
-
     # Initialize variables for estimation of ||A|| and cond(A).
     normA, condA, normx = -one(Tr), -one(Tr), -one(Tr)
     normA2 = abs2(α)

@@ -10,6 +10,7 @@ x = Float32.(rand(N))
 # simple problem
 @time solve_residuals!(deepcopy(x), fes)
 #   0.654833 seconds (1.99 k allocations: 390.841 MiB, 3.71% gc time)
+# it is slow due as gather! is super slow
 @time solve_residuals!(deepcopy(x), fes; method = :Metal)
 
 @time solve_residuals!([x x x x], fes)
@@ -36,5 +37,4 @@ fes = [FixedEffect(pid), FixedEffect(fid)]
 
 @time solve_residuals!([x x x x], fes; maxiter = 300)
 # 9.889438 seconds (225.38 k allocations: 311.964 MiB, 0.33% gc time)
-
 

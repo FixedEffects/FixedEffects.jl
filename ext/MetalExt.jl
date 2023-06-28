@@ -9,7 +9,6 @@ Metal.allowscalar(false)
 ##
 ##############################################################################
 
-Metal.zeros(T::Type, n::Integer) = fill!(MtlVector{T}(undef, n), zero(T))
 function _mtl(T::Type, fe::FixedEffect)
 	refs = MtlArray(fe.refs)
 	interaction = _mtl(T, fe.interaction)
@@ -46,29 +45,34 @@ function FixedEffectLinearMapMetal{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:Me
 	return FixedEffectLinearMapMetal{T}(fes, scales, caches, nthreads)
 end
 
+# gather! is slow for now
 function FixedEffects.gather!(fecoef::MtlVector, refs::MtlVector, α::Number, y::MtlVector, cache::MtlVector, nthreads::Integer)
 	nblocks = cld(length(y), nthreads) 
-	@metal threads=nthreads groups=nblocks gather_kernel!(fecoef, refs, α, y, cache)    
+	Metal.@sync @metal threads=nthreads groups=nblocks gather_kernel!(fecoef, refs, α, y, cache)    
 end
 
 function gather_kernel!(fecoef, refs, α, y, cache)
 	i = thread_position_in_grid_1d()
-	blockSize = threads_per_threadgroup_1d()
-	Metal.atomic_fetch_add_explicit(pointer(fecoef, refs[i]), α * y[i] * cache[i])
+	if i <= length(refs)
+		Metal.atomic_fetch_add_explicit(pointer(fecoef, refs[i]), α * y[i] * cache[i])
+	end
 	return nothing
 end
 
 function FixedEffects.scatter!(y::MtlVector, α::Number, fecoef::MtlVector, refs::MtlVector, cache::MtlVector, nthreads::Integer)
 	nblocks = cld(length(y), nthreads)
-	@metal threads=nthreads groups=nblocks scatter_kernel!(y, α, fecoef, refs, cache)
+	Metal.@sync @metal threads=nthreads groups=nblocks scatter_kernel!(y, α, fecoef, refs, cache)
 end
 
 function scatter_kernel!(y, α, fecoef, refs, cache)
 	i = thread_position_in_grid_1d()
-	blockSize = threads_per_threadgroup_1d()
-	y[i] += α * fecoef[refs[i]] * cache[i]
+	if i <= length(y)
+		y[i] += α * fecoef[refs[i]] * cache[i]
+	end
 	return nothing
 end
+
+
 
 ##############################################################################
 ##
@@ -116,32 +120,36 @@ end
 function scale!(scale::MtlVector, refs::MtlVector, interaction::MtlVector, weights::MtlVector, nthreads::Integer)
 	nblocks = cld(length(refs), nthreads) 
     fill!(scale, 0)
-	@metal threads=nthreads groups=nblocks scale_kernel!(scale, refs, interaction, weights)
-	@metal threads=nthreads groups=nblocks inv_kernel!(scale)
+	Metal.@sync @metal threads=nthreads groups=nblocks scale_kernel!(scale, refs, interaction, weights)
+	Metal.@sync @metal threads=nthreads groups=nblocks inv_kernel!(scale)
 end
 
 function scale_kernel!(scale, refs, interaction, weights)
 	i = thread_position_in_grid_1d()
-	blockSize = threads_per_threadgroup_1d()
-	Metal.atomic_fetch_add_explicit(pointer(scale, refs[i]), interaction[i]^2 * weights[i])
+	if i <= length(refs)
+		Metal.atomic_fetch_add_explicit(pointer(scale, refs[i]), interaction[i]^2 * weights[i])
+	end
 	return nothing
 end
 
 function inv_kernel!(scale)
 	i = thread_position_in_grid_1d()
-	scale[i] = (scale[i] > 0) ? (1 / sqrt(scale[i])) : 0.0
+	if i <= length(scale)
+		scale[i] = (scale[i] > 0) ? (1 / sqrt(scale[i])) : 0.0
+	end
 	return nothing
 end
 
 function cache!(cache::MtlVector, refs::MtlVector, interaction::MtlVector, weights::MtlVector, scale::MtlVector, nthreads::Integer)
 	nblocks = cld(length(cache), nthreads) 
-	@metal threads=nthreads groups=nblocks cache!_kernel!(cache, refs, interaction, weights, scale)
+	Metal.@sync @metal threads=nthreads groups=nblocks cache!_kernel!(cache, refs, interaction, weights, scale)
 end
 
 function cache!_kernel!(cache, refs, interaction, weights, scale)
 	i = thread_position_in_grid_1d()
-	blockSize = threads_per_threadgroup_1d()
-	cache[i] = interaction[i] * sqrt(weights[i]) * scale[refs[i]]
+	if i <= length(cache)
+		cache[i] = interaction[i] * sqrt(weights[i]) * scale[refs[i]]
+	end
 	return nothing
 end
 
