@@ -43,6 +43,4 @@ export FixedEffect,
 AbstractFixedEffectSolver,
 solve_residuals!,
 solve_coefficients!
-
-
 end  # module FixedEffects

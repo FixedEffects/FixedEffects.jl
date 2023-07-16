@@ -38,14 +38,13 @@ mutable struct FixedEffectLinearMapMetal{T} <: AbstractFixedEffectLinearMap{T}
 	nthreads::Int
 end
 
-function FixedEffectLinearMapMetal{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:Metal}}, nthreads) where {T}
+function FixedEffectLinearMapMetal{T}(fes::Vector{<:FixedEffect}, nthreads) where {T}
 	fes = [_mtl(T, fe) for fe in fes]
 	scales = [Metal.zeros(T, fe.n) for fe in fes]
 	caches = [Metal.zeros(T, length(fes[1].interaction)) for fe in fes]
 	return FixedEffectLinearMapMetal{T}(fes, scales, caches, nthreads)
 end
 
-# gather! is slow for now
 function FixedEffects.gather!(fecoef::MtlVector, refs::MtlVector, α::Number, y::MtlVector, cache::MtlVector, nthreads::Integer)
 	nblocks = cld(length(y), nthreads) 
 	Metal.@sync @metal threads=nthreads groups=nblocks gather_kernel!(fecoef, refs, α, y, cache)    
@@ -94,7 +93,7 @@ mutable struct FixedEffectSolverMetal{T} <: FixedEffects.AbstractFixedEffectSolv
 end
 	
 function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:Metal}}, nthreads = 256) where {T}
-	m = FixedEffectLinearMapMetal{T}(fes, Val{:Metal}, nthreads)
+	m = FixedEffectLinearMapMetal{T}(fes, nthreads)
 	b = Metal.zeros(T, length(weights))
 	r = Metal.zeros(T, length(weights))
 	x = FixedEffectCoefficients([Metal.zeros(T, fe.n) for fe in fes])
@@ -102,7 +101,8 @@ function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, w
 	h = FixedEffectCoefficients([Metal.zeros(T, fe.n) for fe in fes])
 	hbar = FixedEffectCoefficients([Metal.zeros(T, fe.n) for fe in fes])
 	tmp = zeros(T, length(weights))
-	FixedEffects.update_weights!(FixedEffectSolverMetal{T}(m, Metal.zeros(T, length(weights)), b, r, x, v, h, hbar, tmp, fes), weights)
+	feM = FixedEffectSolverMetal{T}(m, Metal.zeros(T, length(weights)), b, r, x, v, h, hbar, tmp, fes)
+	FixedEffects.update_weights!(feM, weights)
 end
 
 

@@ -36,7 +36,7 @@ solve_residuals!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
 function solve_residuals!(y::Union{AbstractVector{<: Number}, AbstractMatrix{<: Number}}, fes::AbstractVector{<: FixedEffect}, w::AbstractWeights = uweights(eltype(y), size(y, 1)); 
-	method::Symbol = :cpu, double_precision::Bool = eltype(y) == Float64, 
+	method::Symbol = :cpu, double_precision::Bool = method == :cpu, 
 	tol::Real = double_precision ? 1e-8 : 1e-6, maxiter::Integer = 10000,
 	nthreads = method == :cpu ? Threads.nthreads() : 256)
 	any((length(fe) != size(y, 1) for fe in fes)) && throw("FixedEffects must have the same length as y")

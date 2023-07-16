@@ -39,13 +39,12 @@ mutable struct FixedEffectLinearMapCUDA{T} <: AbstractFixedEffectLinearMap{T}
 	nthreads::Int
 end
 
-function FixedEffectLinearMapCUDA{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:CUDA}}, nthreads) where {T}
+function FixedEffectLinearMapCUDA{T}(fes::Vector{<:FixedEffect}, nthreads) where {T}
 	fes = [_cu(T, fe) for fe in fes]
 	scales = [CUDA.zeros(T, fe.n) for fe in fes]
 	caches = [CUDA.zeros(T, length(fes[1].interaction)) for fe in fes]
 	return FixedEffectLinearMapCUDA{T}(fes, scales, caches, nthreads)
 end
-
 
 function FixedEffects.gather!(fecoef::CuVector, refs::CuVector, α::Number, y::CuVector, cache::CuVector, nthreads::Integer)
 	nblocks = cld(length(y), nthreads) 
@@ -92,9 +91,13 @@ mutable struct FixedEffectSolverCUDA{T} <: FixedEffects.AbstractFixedEffectSolve
 	fes::Vector{<:FixedEffect}
 end
 
+function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:gpu}}, nthreads = 256) where {T}
+	Base.depwarn("The method :gpu is deprecated. Use either :CUDA or :Metal")
+	AbstractFixedEffectSolver{T}(fes, weights, Val(:CUDA), nthreads)
+end
 
 function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:CUDA}}, nthreads = 256) where {T}
-	m = FixedEffectLinearMapCUDA{T}(fes, Val{:CUDA}, nthreads)
+	m = FixedEffectLinearMapCUDA{T}(fes, nthreads)
 	b = CUDA.zeros(T, length(weights))
 	r = CUDA.zeros(T, length(weights))
 	x = FixedEffectCoefficients([CUDA.zeros(T, fe.n) for fe in fes])
@@ -102,7 +105,8 @@ function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, w
 	h = FixedEffectCoefficients([CUDA.zeros(T, fe.n) for fe in fes])
 	hbar = FixedEffectCoefficients([CUDA.zeros(T, fe.n) for fe in fes])
 	tmp = zeros(T, length(weights))
-	FixedEffects.update_weights!(FixedEffectSolverCUDA{T}(m, CUDA.zeros(T, length(weights)), b, r, x, v, h, hbar, tmp, fes), weights)
+	feM = FixedEffectSolverCUDA{T}(m, CUDA.zeros(T, length(weights)), b, r, x, v, h, hbar, tmp, fes)
+	FixedEffects.update_weights!(feM, weights)
 end
 
 function FixedEffects.update_weights!(feM::FixedEffectSolverCUDA{T}, weights::AbstractWeights) where {T}
@@ -120,7 +124,7 @@ function scale!(scale::CuVector, refs::CuVector, interaction::CuVector, weights:
 	nblocks = cld(length(refs), nthreads) 
     fill!(scale, 0)
 	@cuda threads=nthreads blocks=nblocks scale_kernel!(scale, refs, interaction, weights)
-	@cuda threads=nthreads blocks=nblocks inv_kernel!(scale)
+	map!(x -> x > 0 ? 1 / sqrt(x) : 0, scale, scale)
 end
 
 function scale_kernel!(scale, refs, interaction, weights)
@@ -128,14 +132,6 @@ function scale_kernel!(scale, refs, interaction, weights)
 	stride = blockDim().x * gridDim().x
 	@inbounds for i = index:stride:length(interaction)
 		CUDA.atomic_add!(pointer(scale, refs[i]), abs2(interaction[i]) * weights[i])
-	end
-end
-
-function inv_kernel!(scale)
-	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
-	stride = blockDim().x * gridDim().x
-	@inbounds for i = index:stride:length(scale)
-		scale[i] = (scale[i] > 0) ? (1 / sqrt(scale[i])) : 0.0
 	end
 end
 

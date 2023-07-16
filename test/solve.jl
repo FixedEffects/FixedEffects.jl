@@ -28,7 +28,6 @@ end
 if Metal.functional()
 	push!(method_s, :Metal)
 end
-@show Metal.functional()
 for method in method_s
 	println("$method Float32")
 	local (r, iter, conv) = solve_residuals!(deepcopy(x),fes, method=method, double_precision = false)

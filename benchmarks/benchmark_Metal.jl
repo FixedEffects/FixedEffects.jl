@@ -10,13 +10,14 @@ x = Float32.(rand(N))
 # simple problem
 @time solve_residuals!(deepcopy(x), fes)
 #   0.654833 seconds (1.99 k allocations: 390.841 MiB, 3.71% gc time)
-# it is slow due as gather! is super slow
 @time solve_residuals!(deepcopy(x), fes; method = :Metal)
-
+#   0.298326 seconds (129.08 k allocations: 79.208 MiB)
 @time solve_residuals!([x x x x], fes)
-
+#   1.604061 seconds (1.25 M allocations: 416.364 MiB, 4.21% gc time, 30.57% compilation time)
 @time solve_residuals!([x x x x], fes; method = :Metal)
-#   2.319452 seconds (7.71 k allocations: 620.016 MiB, 0.36% gc time)
+#   0.790909 seconds (531.78 k allocations: 204.363 MiB, 3.19% compilation time)
+
+
 
 # More complicated problem
 N = 800000 # number of observations
@@ -27,14 +28,12 @@ pid = rand(1:M, N)
 fid = [rand(max(1, div(x, 8)-10):min(O, div(x, 8)+10)) for x in pid]
 x = rand(N)
 fes = [FixedEffect(pid), FixedEffect(fid)]
-@time solve_residuals!(deepcopy(x), fes; double_precision = false)
-# 2.239687 seconds (110.81 k allocations: 35.470 MiB)
-@time solve_residuals!(deepcopy(x), fes; maxiter = 300)
-# 3.681389 seconds (97.09 k allocations: 62.593 MiB)
+
 
 @time solve_residuals!([x x x x], fes; double_precision = false)
-# 5.253745 seconds (285.98 k allocations: 184.213 MiB, 0.55% gc time)
+#   8.294446 seconds (225.13 k allocations: 67.777 MiB, 0.11% gc time)
 
-@time solve_residuals!([x x x x], fes; maxiter = 300)
-# 9.889438 seconds (225.38 k allocations: 311.964 MiB, 0.33% gc time)
+@time solve_residuals!([x x x x], fes; double_precision = false, method = :Metal)
+#   1.605953 seconds (3.25 M allocations: 103.342 MiB, 1.82% gc time)
+
 
