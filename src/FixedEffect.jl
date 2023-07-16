@@ -135,5 +135,6 @@ function rescale!(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVect
 end
 
 function full(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVector{<:FixedEffect})
-	[fecoef[fe.refs] for (fecoef, fe) in zip(fecoefs, fes)]
+	# add collect in case Metal, since then fecoef is Vector while fe.refs is GPU
+	[fecoef[collect(fe.refs)] for (fecoef, fe) in zip(fecoefs, fes)]
 end

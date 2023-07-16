@@ -23,7 +23,7 @@ r_ols =  [-0.2015993617092453,  0.2015993617092464, -0.2015993617092463,  0.2015
 
 method_s = [:cpu]
 if CUDA.functional()
-	push!(method_s, :CUA)
+	push!(method_s, :CUDA)
 end
 if Metal.functional()
 	push!(method_s, :Metal)
