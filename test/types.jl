@@ -1,10 +1,6 @@
-using Test
-using FixedEffects
-using StatsBase
-using PooledArrays, CategoricalArrays
-import Base: ==
 
-==(x::FixedEffect{R,I}, y::FixedEffect{R,I}) where {R,I} =
+import Base.==
+(==)(x::FixedEffect{R,I}, y::FixedEffect{R,I}) where {R,I} =
     x.refs == y.refs && x.interaction == y.interaction && x.n == y.n
 
 

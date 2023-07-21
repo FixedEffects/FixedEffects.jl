@@ -1,4 +1,4 @@
-using FixedEffects, CategoricalArrays, Random, CUDA, BenchmarkTools, Statistics
+using CUDA, FixedEffects, CategoricalArrays, Random, BenchmarkTools, Statistics
 
 Random.seed!(1234)
 N = 10000000
@@ -10,8 +10,8 @@ id3 = categorical(Int.(rand(1:(N/K), N)))
 x = rand(N)
 X = rand(N, 10)
 
-(r_g, it_g, conv_g)=solve_residuals!(copy(x), deepcopy([FixedEffect(id1), FixedEffect(id2)]), method = :lsmr_gpu)
-(r_c, it_c, conv_c)=solve_residuals!(copy(x), deepcopy([FixedEffect(id1), FixedEffect(id2)]), method = :lsmr);
+(r_g, it_g, conv_g)=solve_residuals!(copy(x), deepcopy([FixedEffect(id1), FixedEffect(id2)]), method = :CUDA)
+(r_c, it_c, conv_c)=solve_residuals!(copy(x), deepcopy([FixedEffect(id1), FixedEffect(id2)]));
 
 
 @show r_c ≈ r_g
@@ -20,19 +20,19 @@ X = rand(N, 10)
 
 
 println("CPU Float64, size(x)=$(size(x)), 2 fixed effects")
-@btime (r_c, it_c, conv_c)=solve_residuals!($x, [FixedEffect(id1), FixedEffect(id2)], method = :lsmr)
+@btime (r_c, it_c, conv_c)=solve_residuals!($x, [FixedEffect(id1), FixedEffect(id2)])
 println("CPU Float32, size(x)=$(size(x)), 2 fixed effects")
-@btime (r_c, it_c, conv_c)=solve_residuals!(Float32.(x), [FixedEffect(id1), FixedEffect(id2)], method = :lsmr)
+@btime (r_c, it_c, conv_c)=solve_residuals!(Float32.(x), [FixedEffect(id1), FixedEffect(id2)])
 println("GPU Float64, size(x)=$(size(x)), 2 fixed effects")
-@btime (r_g, it_g, conv_g)=solve_residuals!($x, [FixedEffect(id1), FixedEffect(id2)], method = :lsmr_gpu)
+@btime (r_g, it_g, conv_g)=solve_residuals!($x, [FixedEffect(id1), FixedEffect(id2)], method = :CUDA)
 println("GPU Float32, size(x)=$(size(x)), 2 fixed effects")
-@btime (r_g, it_g, conv_g)=solve_residuals!(Float32.(x), [FixedEffect(id1), FixedEffect(id2)], method = :lsmr_gpu)
+@btime (r_g, it_g, conv_g)=solve_residuals!(Float32.(x), [FixedEffect(id1), FixedEffect(id2)], method = :CUDA)
 
 
 # Note that most of the GPU time is spend transferring memory 
 using Profile
 Profile.clear()
-@profile solve_residuals!(x, [FixedEffect(id1), FixedEffect(id2)], method = :lsmr_gpu);
+@profile solve_residuals!(x, [FixedEffect(id1), FixedEffect(id2)], method = :CUDA);
 Profile.print(noisefloor=1.0)
 
 
@@ -64,13 +64,13 @@ println("CPU Float32")
 
 println("GPU Float64")
 @time (rg6,i,c)=solve_residuals!(copy(X), [FixedEffect(pid), FixedEffect(fid)],
-                                 method = :lsmr_gpu,
+                                 method = :CUDA,
                                  tol=sqrt(eps(Float32)));  
 @show i
 
 println("GPU Float32")
 @time (rg3,i,c)=solve_residuals!(Float32.(X), [FixedEffect(pid), FixedEffect(fid)],
-                                 method = :lsmr_gpu, 
+                                 method = :CUDA, 
                                  tol=sqrt(eps(Float32)));
 @show i
 @show mean(rg3)

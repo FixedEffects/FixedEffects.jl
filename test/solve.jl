@@ -1,4 +1,3 @@
-using Test, StatsBase, CUDA, FixedEffects, PooledArrays, CategoricalArrays
 
 
 p1 = repeat(1:5, inner = 2)
@@ -23,8 +22,11 @@ r_ols =  [-0.2015993617092453,  0.2015993617092464, -0.2015993617092463,  0.2015
 
 
 method_s = [:cpu]
-if FixedEffects.has_CUDA()
-	push!(method_s, :gpu)
+if CUDA.functional()
+	push!(method_s, :CUDA)
+end
+if Metal.functional()
+	push!(method_s, :Metal)
 end
 for method in method_s
 	println("$method Float32")
