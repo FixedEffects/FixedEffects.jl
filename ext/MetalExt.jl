@@ -19,8 +19,6 @@ _mtl(T::Type, w::AbstractVector) = MtlVector{T}(convert(Vector{T}, w))
 
 ##############################################################################
 ##
-## FixedEffectLinearMap on the Metal (code by Paul Schrimpf)
-##
 ## Model matrix of categorical variables
 ## mutiplied by diag(1/sqrt(∑w * interaction^2, ..., ∑w * interaction^2) (Jacobi preconditoner)
 ##
