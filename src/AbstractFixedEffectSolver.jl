@@ -45,30 +45,7 @@ function solve_residuals!(y::Union{AbstractVector{<: Number}, AbstractMatrix{<: 
 	solve_residuals!(y, feM; maxiter = maxiter, tol = tol)
 end
 
-function solve_residuals!(X::AbstractMatrix, feM::AbstractFixedEffectSolver; progress_bar = true, kwargs...)
-    iterations = Int[]
-    convergeds = Bool[]
-    bar = MiniProgressBar(header = "Demean Variables:", color = Base.info_color(), percentage = false, max = size(X, 2))
-    for j in 1:size(X, 2)
-    	v0 = time()
-        _, iteration, converged = solve_residuals!(view(X, :, j), feM; kwargs...)
-        v1 = time()
-        # remove progress_bar if estimated time lower than 2sec
-	    if progress_bar && (j == 1) && ((v1 - v0) * size(X, 2) <= 2)
-	    	progress_bar = false
-	    end
-    	if progress_bar
-    		bar.current = j
-    	    showprogress(stdout, bar)
-    	end
-        push!(iterations, iteration)
-        push!(convergeds, converged)
-    end
-    if progress_bar
-    	end_progress(stdout, bar)
-    end
-    return X, iterations, convergeds
-end
+
 
 function solve_residuals!(r::AbstractVector, feM::AbstractFixedEffectSolver{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	# One cannot copy view of Vector (r) on GPU, so first collect the vector
@@ -102,6 +79,34 @@ function solve_residuals!(r::AbstractVector, feM::AbstractFixedEffectSolver{T}; 
 	return r, iter, converged
 end
 
+function solve_residuals!(xs::AbstractVector{<: AbstractVector}, feM::AbstractFixedEffectSolver; progress_bar = true, kwargs...)
+    iterations = Int[]
+    convergeds = Bool[]
+    bar = MiniProgressBar(header = "Demean Variables:", color = Base.info_color(), percentage = false, max = length(xs))
+    for (j, x) in enumerate(xs)
+    	v0 = time()
+        _, iteration, converged = solve_residuals!(x, feM; kwargs...)
+        v1 = time()
+        # remove progress_bar if estimated time lower than 2sec
+	    if progress_bar && (j == 1) && ((v1 - v0) * length(xs) <= 2)
+	    	progress_bar = false
+	    end
+    	if progress_bar
+    		bar.current = j
+    	    showprogress(stdout, bar)
+    	end
+        push!(iterations, iteration)
+        push!(convergeds, converged)
+    end
+    if progress_bar
+    	end_progress(stdout, bar)
+    end
+    return xs, iterations, convergeds
+end
+
+function solve_residuals!(X::AbstractMatrix, feM::AbstractFixedEffectSolver; kwargs...)
+	solve_residuals!(eachcol(X), feM; kwargs...)
+end
 
 
 

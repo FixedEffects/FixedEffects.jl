@@ -14,7 +14,7 @@ function _mtl(T::Type, fe::FixedEffect)
 	interaction = _mtl(T, fe.interaction)
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
 end
-_mtl(T::Type, w::UnitWeights) = fill!(MtlVector{T}(undef, length(w)), w[1])
+_mtl(T::Type, w::UnitWeights) = Metal.ones(T, length(w))
 _mtl(T::Type, w::AbstractVector) = MtlVector{T}(convert(Vector{T}, w))
 
 ##############################################################################
@@ -119,7 +119,7 @@ end
 
 function scale!(scale::MtlVector, refs::MtlVector, interaction::MtlVector, weights::MtlVector, nthreads::Integer)
 	nblocks = cld(length(refs), nthreads) 
-    fill!(scale, 0)
+    fill!(scale, 0.0)
 	Metal.@sync @metal threads=nthreads groups=nblocks scale_kernel!(scale, refs, interaction, weights)
 	Metal.@sync @metal threads=nthreads groups=nblocks inv_kernel!(scale)
 end
