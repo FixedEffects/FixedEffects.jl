@@ -105,7 +105,8 @@ function solve_residuals!(xs::AbstractVector{<: AbstractVector}, feM::AbstractFi
 end
 
 function solve_residuals!(X::AbstractMatrix, feM::AbstractFixedEffectSolver; kwargs...)
-	solve_residuals!(eachcol(X), feM; kwargs...)
+	xs, iterations, convergeds = solve_residuals!(eachcol(X), feM; kwargs...)
+	return X, iterations, convergeds
 end
 
 
