@@ -14,12 +14,12 @@ function _mtl(T::Type, fe::FixedEffect)
 	interaction = _mtl(T, fe.interaction)
 	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
 end
-_mtl(T::Type, w::UnitWeights) = fill!(MtlVector{T}(undef, length(w)), w[1])
+_mtl(T::Type, w::UnitWeights) = Metal.ones(T, length(w))
 _mtl(T::Type, w::AbstractVector) = MtlVector{T}(convert(Vector{T}, w))
 
 ##############################################################################
 ##
-## FixedEffectLinearMap on the Metal (code by Paul Schrimpf)
+## FixedEffectLinearMap on Metal
 ##
 ## Model matrix of categorical variables
 ## mutiplied by diag(1/sqrt(∑w * interaction^2, ..., ∑w * interaction^2) (Jacobi preconditoner)
