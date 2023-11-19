@@ -119,7 +119,7 @@ end
 
 function scale!(scale::MtlVector, refs::MtlVector, interaction::MtlVector, weights::MtlVector, nthreads::Integer)
 	nblocks = cld(length(refs), nthreads) 
-    fill!(scale, 0.0)
+    fill!(scale, 0)
 	Metal.@sync @metal threads=nthreads groups=nblocks scale_kernel!(scale, refs, interaction, weights)
 	Metal.@sync @metal threads=nthreads groups=nblocks inv_kernel!(scale)
 end
