@@ -47,7 +47,7 @@ end
 
 
 
-function solve_residuals!(r::AbstractVector, feM::AbstractFixedEffectSolver{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
+function solve_residuals!(r::AbstractVector{<: Real}, feM::AbstractFixedEffectSolver; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000)
 	# One cannot copy view of Vector (r) on GPU, so first collect the vector
 	if works_with_view(feM)
 		copyto!(feM.r, r)
@@ -60,7 +60,6 @@ function solve_residuals!(r::AbstractVector, feM::AbstractFixedEffectSolver{T}; 
 	end
 	copyto!(feM.b, feM.r)
 	mul!(feM.x, feM.m', feM.b, 1, 0)
-
 	iter, converged = 1, true
     if length(feM.x.x) > 1
         x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
