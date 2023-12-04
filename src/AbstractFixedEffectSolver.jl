@@ -71,7 +71,7 @@ function solve_residuals!(r::AbstractVector, feM::AbstractFixedEffectSolver{T}; 
 		feM.r ./=  sqrt.(feM.weights)
 	end
 	if works_with_view(feM)
-		copy!(r, feM.r)
+		copyto!(r, feM.r)
 	else
 		copyto!(feM.tmp, feM.r)
 		copyto!(r, feM.tmp)
@@ -104,6 +104,7 @@ function solve_residuals!(xs::AbstractVector{<: AbstractVector}, feM::AbstractFi
     return xs, iterations, convergeds
 end
 
+# to depreciate
 function solve_residuals!(X::AbstractMatrix, feM::AbstractFixedEffectSolver; kwargs...)
 	xs, iterations, convergeds = solve_residuals!(eachcol(X), feM; kwargs...)
 	return X, iterations, convergeds

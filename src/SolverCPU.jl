@@ -45,7 +45,7 @@ end
 
 function gather!(fecoef::AbstractVector, refs::AbstractVector, α::Number, 
 	y::AbstractVector, cache::AbstractVector, irange::AbstractRange)
-	@inbounds @simd for i in irange
+	@fastmath @inbounds @simd for i in irange
 		fecoef[refs[i]] += α * y[i] * cache[i]
 	end
 end
@@ -61,7 +61,7 @@ end
 
 function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector, 
 	refs::AbstractVector, cache::AbstractVector, irange::AbstractRange)
-	@inbounds @simd for i in irange
+	@fastmath @inbounds @simd for i in irange
 		y[i] += α * fecoef[refs[i]] * cache[i]
 	end
 end
@@ -109,7 +109,7 @@ end
 
 function scale!(scale::AbstractVector, refs::AbstractVector, interaction::AbstractVector, weights::AbstractVector)
         fill!(scale, 0)
-	@inbounds @simd for i in eachindex(refs)
+	@fastmath @inbounds @simd for i in eachindex(refs)
 		scale[refs[i]] += abs2(interaction[i]) * weights[i]
 	end
 	# Case of interaction variatble equal to zero in the category (issue #97)
@@ -119,11 +119,7 @@ function scale!(scale::AbstractVector, refs::AbstractVector, interaction::Abstra
 end
 
 function cache!(cache::AbstractVector, refs::AbstractVector, interaction::AbstractVector, weights::AbstractVector, scale::AbstractVector)
-	@inbounds @simd for i in eachindex(cache)
+	@fastmath @inbounds @simd for i in eachindex(cache)
 		cache[i] = interaction[i] * sqrt(weights[i]) * scale[refs[i]]
 	end
 end
-
-
-
-
