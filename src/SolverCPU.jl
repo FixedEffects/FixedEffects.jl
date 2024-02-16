@@ -24,44 +24,23 @@ function LinearAlgebra.mul!(fecoefs::FixedEffectCoefficients,
 	y::AbstractVector, α::Number, β::Number) where {T}
 	fem = adjoint(Cfem)
 	rmul!(fecoefs, β)
-	for (fecoef, fe, cache, tmp) in zip(fecoefs.x, fem.fes, fem.caches, fem.tmp)
-		gather!(fecoef, fe.refs, α, y, cache, tmp, fem.nthreads)
+	for (fecoef, fe, cache) in zip(fecoefs.x, fem.fes, fem.caches)
+		gather!(fecoef, fe.refs, α, y, cache, 1)
 	end
 	return fecoefs
 end
 
 function gather!(fecoef::AbstractVector, refs::AbstractVector, α::Number, 
-	y::AbstractVector, cache::AbstractVector, tmp::AbstractVector, nthreads::Integer)
-	n_each = div(length(y), nthreads)
-	Threads.@threads for t in 1:nthreads
-		fill!(tmp[t], 0.0)
-		gather!(tmp[t], refs, α, y, cache, ((t - 1) * n_each + 1):(t * n_each))
-	end
-	for x in tmp
-		fecoef .+= x
-	end
-	gather!(fecoef, refs, α, y, cache, (nthreads * n_each + 1):length(y))
-end
-
-function gather!(fecoef::AbstractVector, refs::AbstractVector, α::Number, 
-	y::AbstractVector, cache::AbstractVector, irange::AbstractRange)
-	@fastmath @inbounds @simd for i in irange
+	y::AbstractVector, cache::AbstractVector, nthreads)
+	@fastmath @inbounds @simd for i in eachindex(y)
 		fecoef[refs[i]] += α * y[i] * cache[i]
 	end
 end
 
-function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector, 
-	refs::AbstractVector, cache::AbstractVector, nthreads::Integer)
-	n_each = div(length(y), nthreads)
-	Threads.@threads for t in 1:nthreads
-		scatter!(y, α, fecoef, refs, cache, ((t - 1) * n_each + 1):(t * n_each))
-	end
-	scatter!(y, α, fecoef, refs, cache, (nthreads * n_each + 1):length(y))
-end
 
 function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector, 
-	refs::AbstractVector, cache::AbstractVector, irange::AbstractRange)
-	@fastmath @inbounds @simd for i in irange
+	refs::AbstractVector, cache::AbstractVector, nthreads)
+	@fastmath @inbounds @simd for i in eachindex(y)
 		y[i] += α * fecoef[refs[i]] * cache[i]
 	end
 end
