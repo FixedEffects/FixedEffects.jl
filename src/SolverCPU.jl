@@ -55,15 +55,15 @@ function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector,
 	refs::AbstractVector, cache::AbstractVector, irange::AbstractRange)
 	# α is actually only 1 or -1 so do special path for them
 	if α == 1
-		@inbounds @simd for i in irange
+		@fastmath @inbounds @simd for i in irange
 			y[i] += fecoef[refs[i]] * cache[i]
 		end
 	elseif α == -1
-		@inbounds @simd for i in irange
+		@fastmath @inbounds @simd for i in irange
 			y[i] -= fecoef[refs[i]] * cache[i]
 		end
 	else
-		@inbounds @simd for i in irange
+		@fastmath @inbounds @simd for i in irange
 			y[i] += α * fecoef[refs[i]] * cache[i]
 		end
 	end
