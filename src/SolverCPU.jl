@@ -8,15 +8,13 @@ mutable struct FixedEffectLinearMapCPU{T} <: AbstractFixedEffectLinearMap{T}
 	fes::Vector{<:FixedEffect}
 	scales::Vector{<:AbstractVector}
 	caches::Vector{<:AbstractVector}
-	tmp::Vector{Union{Nothing, <:AbstractVector}}
 	nthreads::Int
 end
 
 function FixedEffectLinearMapCPU{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:cpu}}, nthreads) where {T}
 	scales = [zeros(T, fe.n) for fe in fes]
 	caches = [zeros(T, length(fes[1].interaction)) for fe in fes]
-	fecoefs = [[zeros(T, fe.n) for _ in 1:nthreads] for fe in fes]
-	return FixedEffectLinearMapCPU{T}(fes, scales, caches, fecoefs, nthreads)
+	return FixedEffectLinearMapCPU{T}(fes, scales, caches, nthreads)
 end
 
 function LinearAlgebra.mul!(fecoefs::FixedEffectCoefficients, 
@@ -25,26 +23,51 @@ function LinearAlgebra.mul!(fecoefs::FixedEffectCoefficients,
 	fem = adjoint(Cfem)
 	rmul!(fecoefs, β)
 	for (fecoef, fe, cache) in zip(fecoefs.x, fem.fes, fem.caches)
-		gather!(fecoef, fe.refs, α, y, cache, 1)
+		gather!(fecoef, fe.refs, α, y, cache, fem.nthreads)
 	end
 	return fecoefs
 end
 
+# multithreaded gather seemds to be slower
 function gather!(fecoef::AbstractVector, refs::AbstractVector, α::Number, 
-	y::AbstractVector, cache::AbstractVector, nthreads)
-	@fastmath @inbounds @simd for i in eachindex(y)
-		fecoef[refs[i]] += α * y[i] * cache[i]
+	y::AbstractVector, cache::AbstractVector, nthreads::Integer)
+	if α == 1
+		@fastmath @inbounds @simd for i in eachindex(y)
+			fecoef[refs[i]] += y[i] * cache[i]
+		end
+	else
+		@fastmath @inbounds @simd for i in eachindex(y)
+			fecoef[refs[i]] += α * y[i] * cache[i]
+		end
 	end
 end
-
 
 function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector, 
-	refs::AbstractVector, cache::AbstractVector, nthreads)
-	@fastmath @inbounds @simd for i in eachindex(y)
-		y[i] += α * fecoef[refs[i]] * cache[i]
+	refs::AbstractVector, cache::AbstractVector, nthreads::Integer)
+	n_each = div(length(y), nthreads)
+	Threads.@threads for t in 1:nthreads
+		scatter!(y, α, fecoef, refs, cache, ((t - 1) * n_each + 1):(t * n_each))
 	end
+	scatter!(y, α, fecoef, refs, cache, (nthreads * n_each + 1):length(y))
 end
 
+function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector, 
+	refs::AbstractVector, cache::AbstractVector, irange::AbstractRange)
+	# α is actually only 1 or -1 so do special path for them
+	if α == 1
+		@inbounds @simd for i in irange
+			y[i] += fecoef[refs[i]] * cache[i]
+		end
+	elseif α == -1
+		@inbounds @simd for i in irange
+			y[i] -= fecoef[refs[i]] * cache[i]
+		end
+	else
+		@inbounds @simd for i in irange
+			y[i] += α * fecoef[refs[i]] * cache[i]
+		end
+	end
+end
 ##############################################################################
 ##
 ## Implement AbstractFixedEffectSolver interface
