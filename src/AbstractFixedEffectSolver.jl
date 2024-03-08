@@ -35,7 +35,7 @@ p2 = repeat(1:5, outer = 2)
 solve_residuals!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
-function solve_residuals!(y::Union{AbstractVector{<: Number}, AbstractMatrix{<: Number}}, fes::AbstractVector{<: FixedEffect}, w::AbstractWeights = uweights(eltype(y), size(y, 1)); 
+function solve_residuals!(y::Union{AbstractVector{<: Real}, AbstractMatrix{<: Real}}, fes::AbstractVector{<: FixedEffect}, w::AbstractWeights = uweights(eltype(y), size(y, 1)); 
 	method::Symbol = :cpu, double_precision::Bool = method == :cpu, 
 	tol::Real = double_precision ? 1e-8 : 1e-6, maxiter::Integer = 10000,
 	nthreads = method == :cpu ? Threads.nthreads() : 256)
@@ -47,7 +47,7 @@ end
 
 
 
-function solve_residuals!(r::AbstractVector, feM::AbstractFixedEffectSolver{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
+function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSolver{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	# One cannot copy view of Vector (r) on GPU, so first collect the vector
 	if works_with_view(feM)
 		copyto!(feM.r, r)
