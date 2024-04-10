@@ -79,6 +79,7 @@ function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSol
 	return r, iter, converged
 end
 
+# A fallback method for collections of x
 function solve_residuals!(xs, feM::AbstractFixedEffectSolver; progress_bar = true, kwargs...)
     iterations = Int[]
     convergeds = Bool[]
