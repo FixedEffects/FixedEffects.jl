@@ -79,7 +79,7 @@ function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSol
 	return r, iter, converged
 end
 
-function solve_residuals!(xs::AbstractVector{<: AbstractVector}, feM::AbstractFixedEffectSolver; progress_bar = true, kwargs...)
+function solve_residuals!(xs, feM::AbstractFixedEffectSolver; progress_bar = true, kwargs...)
     iterations = Int[]
     convergeds = Bool[]
     bar = MiniProgressBar(header = "Demean Variables:", color = Base.info_color(), percentage = false, max = length(xs))
