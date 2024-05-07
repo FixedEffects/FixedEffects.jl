@@ -79,7 +79,11 @@ function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSol
 	return r, iter, converged
 end
 
-function solve_residuals!(xs::AbstractVector{<: AbstractVector}, feM::AbstractFixedEffectSolver; progress_bar = true, kwargs...)
+# A fallback method for collections of x
+# The container for data columns does not have to be a vector
+# This allows the use of iterators and tuples for xs in downstream packages
+# See https://github.com/FixedEffects/FixedEffects.jl/pull/65
+function solve_residuals!(xs, feM::AbstractFixedEffectSolver; progress_bar = true, kwargs...)
     iterations = Int[]
     convergeds = Bool[]
     bar = MiniProgressBar(header = "Demean Variables:", color = Base.info_color(), percentage = false, max = length(xs))
