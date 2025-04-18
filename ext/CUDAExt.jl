@@ -131,7 +131,7 @@ function scale_kernel!(scale, refs, interaction, weights)
 	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
 	@inbounds for i = index:stride:length(interaction)
-		CUDA.@atomic scale[refs[i]] += abs2(interaction[i]) * weights[i])
+		CUDA.@atomic scale[refs[i]] += abs2(interaction[i]) * weights[i]
 	end
 end
 
