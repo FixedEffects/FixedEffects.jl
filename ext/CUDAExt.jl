@@ -55,7 +55,7 @@ function gather_kernel!(fecoef, refs, α, y, cache)
 	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
 	@inbounds for i = index:stride:length(y)
-		CUDA.atomic_add!(pointer(fecoef, refs[i]), α * y[i] * cache[i])
+		CUDA.@atomic fecoef[refs[i]] += α * y[i] * cache[i]
 	end
 end
 
@@ -131,7 +131,7 @@ function scale_kernel!(scale, refs, interaction, weights)
 	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
 	@inbounds for i = index:stride:length(interaction)
-		CUDA.atomic_add!(pointer(scale, refs[i]), abs2(interaction[i]) * weights[i])
+		CUDA.@atomic scale[refs[i]] += abs2(interaction[i]) * weights[i]
 	end
 end
 
