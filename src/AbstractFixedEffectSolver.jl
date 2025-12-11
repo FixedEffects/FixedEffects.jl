@@ -172,7 +172,7 @@ function FixedEffects.solve_coefficients!(r::AbstractVector, feM::AbstractFixedE
 	if !(feM.weights isa UnitWeights)
 		feM.b .*= sqrt.(feM.weights)
 	end
-	fill!(feM.x, 0.0)
+	fill!(feM.x, zero(T))
 	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
 	for (x, scale) in zip(feM.x.x, feM.m.scales)
 		x .*=  scale
