@@ -1,4 +1,4 @@
-e# Define methods used in LSMR
+# Define methods used in LSMR
 
 ##############################################################################
 ## 
