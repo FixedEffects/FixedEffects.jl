@@ -1,4 +1,4 @@
-# Define methods used in LSMR
+e# Define methods used in LSMR
 
 ##############################################################################
 ## 
@@ -28,14 +28,14 @@ end
 
 function Base.fill!(fecoefs::FixedEffectCoefficients, α::Number)
 	for x in fecoefs.x
-		fill!(x, α)
+		fill!(x, eltype(fecoefs)(α))
 	end
 	return fecoefs
 end
 
 function LinearAlgebra.rmul!(fecoefs::FixedEffectCoefficients, α::Number)
 	for x in fecoefs.x
-		rmul!(x, α)
+		rmul!(x, eltype(fecoefs)(α))
 	end
 	return fecoefs
 end
