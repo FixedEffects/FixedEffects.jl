@@ -195,7 +195,7 @@ function scale!(scale::MtlVector, refs::MtlVector, interaction::MtlVector, weigh
 	nblocks = cld(length(refs), nthreads) 
     fill!(scale, 0)
 	Metal.@sync @metal threads=nthreads groups=nblocks scale_kernel!(scale, refs, interaction, weights)
-	Metal.@sync @metal threads=nthreads groups=nblocks inv_kernel!(scale)
+	Metal.@sync @metal threads=nthreads groups=nblocks inv_kernel!(scale, eltype(scale))
 end
 
 function scale_kernel!(scale, refs, interaction, weights)
@@ -206,10 +206,10 @@ function scale_kernel!(scale, refs, interaction, weights)
 	return nothing
 end
 
-function inv_kernel!(scale)
+function inv_kernel!(scale, T)
 	i = thread_position_in_grid_1d()
 	if i <= length(scale)
-		@inbounds scale[i] = (scale[i] > 0) ? (1 / sqrt(scale[i])) : 0.0
+		@inbounds scale[i] = (scale[i] > 0) ? (1 / sqrt(scale[i])) : zero(T)
 	end
 	return nothing
 end

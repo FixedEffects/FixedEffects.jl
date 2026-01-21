@@ -128,7 +128,7 @@ function scale!(scale::CuVector, refs::CuVector, interaction::CuVector, weights:
 	nblocks = cld(length(refs), nthreads) 
     fill!(scale, 0)
 	@cuda threads=nthreads blocks=nblocks scale_kernel!(scale, refs, interaction, weights)
-	map!(x -> x > 0 ? 1 / sqrt(x) : 0, scale, scale)
+	map!(x -> x > 0 ? 1 / sqrt(x) : zero(eltype(scale)), scale, scale)
 end
 
 function scale_kernel!(scale, refs, interaction, weights)
