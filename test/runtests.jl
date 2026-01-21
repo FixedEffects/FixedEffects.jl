@@ -8,7 +8,7 @@ if VERSION >= v"1.8"
 	using Metal
 end
 
-using Test, StatsBase, CUDA, FixedEffects, PooledArrays, CategoricalArrays
+using Test, StatsBase, CUDA, Metal, FixedEffects, PooledArrays, CategoricalArrays
 
 for test in tests
 	try
