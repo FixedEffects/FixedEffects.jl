@@ -52,10 +52,12 @@ function FixedEffects.gather!(fecoef::CuVector, refs::CuVector, α::Number, y::C
 end
 
 function gather_kernel!(fecoef, refs, α, y, cache)
-	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+	index = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
-	@inbounds for i = index:stride:length(y)
+	i = index
+	@inbounds while i <= length(y)
 		CUDA.@atomic fecoef[refs[i]] += α * y[i] * cache[i]
+		i += stride
 	end
 end
 
@@ -65,10 +67,12 @@ function FixedEffects.scatter!(y::CuVector, α::Number, fecoef::CuVector, refs::
 end
 
 function scatter_kernel!(y, α, fecoef, refs, cache)
-	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+	index = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
-	@inbounds for i = index:stride:length(y)
+	i = index
+	@inbounds while i <= length(y)
 		y[i] += α * fecoef[refs[i]] * cache[i]
+		i += stride
 	end
 end
 
@@ -124,14 +128,16 @@ function scale!(scale::CuVector, refs::CuVector, interaction::CuVector, weights:
 	nblocks = cld(length(refs), nthreads) 
     fill!(scale, 0)
 	@cuda threads=nthreads blocks=nblocks scale_kernel!(scale, refs, interaction, weights)
-	map!(x -> x > 0 ? 1 / sqrt(x) : 0, scale, scale)
+	map!(x -> x > 0 ? 1 / sqrt(x) : zero(eltype(scale)), scale, scale)
 end
 
 function scale_kernel!(scale, refs, interaction, weights)
-	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+	index = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
-	@inbounds for i = index:stride:length(interaction)
+	i = index
+	@inbounds while i <= length(interaction)
 		CUDA.@atomic scale[refs[i]] += abs2(interaction[i]) * weights[i]
+		i += stride
 	end
 end
 
@@ -141,10 +147,12 @@ function cache!(cache::CuVector, refs::CuVector, interaction::CuVector, weights:
 end
 
 function cache!_kernel!(cache, refs, interaction, weights, scale)
-	index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+	index = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
-	@inbounds for i = index:stride:length(cache)
+	i = index
+	@inbounds while i <= length(cache)
 		cache[i] = interaction[i] * sqrt(weights[i]) * scale[refs[i]]
+		i += stride
 	end
 end
 

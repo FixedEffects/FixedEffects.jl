@@ -25,12 +25,12 @@ method_s = [:cpu]
 if CUDA.functional()
 	push!(method_s, :CUDA)
 end
-#if Metal.functional()
-#	push!(method_s, :Metal)
-#end
+if Metal.functional()
+	push!(method_s, :Metal)
+end
 for method in method_s
 	println("$method Float32")
-	local (r, iter, conv) = solve_residuals!(deepcopy(x),fes, method=method, double_precision = false)
+	local (r, iter, conv) = solve_residuals!(deepcopy(x), fes, method=method, double_precision = false)
 	@test Float32.(r) ≈ Float32.(r_ols)
 end
 
