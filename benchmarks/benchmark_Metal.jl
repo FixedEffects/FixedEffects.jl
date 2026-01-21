@@ -7,14 +7,10 @@ id2 = rand(1:K, N)
 fes = [FixedEffect(id1), FixedEffect(id2)]
 x = Float32.(rand(N))
 
-
-# here what takes time if the seocnd fixede ffects where K is very small and so there is a lot of trheads that want to write on the same thing. In that case, it would probably be good to actually pre-compute permutation for each fixed effects once, and then do as manu groups as permutations etc
-
-
 # simple problem
-@time solve_residuals!(deepcopy(x), fes; double_precision = false)
+@time solve_residuals!(deepcopy(x), fes)
 #   0.654833 seconds (1.99 k allocations: 390.841 MiB, 3.71% gc time)
-@time solve_residuals!(deepcopy(x), fes; double_precision = false, method = :Metal)
+@time solve_residuals!(deepcopy(x), fes; method = :Metal)
 #   0.298326 seconds (129.08 k allocations: 79.208 MiB)
 @time solve_residuals!([x x x x], fes)
 #   1.604061 seconds (1.25 M allocations: 416.364 MiB, 4.21% gc time, 30.57% compilation time)

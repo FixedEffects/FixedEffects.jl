@@ -17,6 +17,16 @@ function FixedEffectLinearMapCPU{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:cpu}
 	return FixedEffectLinearMapCPU{T}(fes, scales, caches, nthreads)
 end
 
+function LinearAlgebra.mul!(fecoefs::FixedEffectCoefficients, 
+	Cfem::Adjoint{T, FixedEffectLinearMapCPU{T}},
+	y::AbstractVector, α::Number, β::Number) where {T}
+	fem = adjoint(Cfem)
+	rmul!(fecoefs, β)
+	for (fecoef, fe, cache) in zip(fecoefs.x, fem.fes, fem.caches)
+		gather!(fecoef, fe.refs, α, y, cache, fem.nthreads)
+	end
+	return fecoefs
+end
 
 # multithreaded gather seemds to be slower
 function gather!(fecoef::AbstractVector, refs::AbstractVector, α::Number, 

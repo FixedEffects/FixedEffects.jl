@@ -1,7 +1,14 @@
 tests = ["types.jl", "solve.jl"]
 println("Running tests:")
 
-using Test, StatsBase, CUDA, Metal, FixedEffects, PooledArrays, CategoricalArrays
+# A work around for tests to run on older versions of Julia
+using Pkg
+if VERSION >= v"1.8"
+	Pkg.add("Metal")
+	using Metal
+end
+
+using Test, StatsBase, CUDA, FixedEffects, PooledArrays, CategoricalArrays
 
 for test in tests
 	try
