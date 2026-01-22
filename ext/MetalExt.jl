@@ -43,11 +43,11 @@ function bucketize_refs(refs::Vector, K::Int, T)
 		# count the number of obs per group
 	    counts = zeros(UInt32, K)
 	    @inbounds for r in refs
-	        counts[r] += UInt32(1)
+	        counts[r] += 0x00000001
 	    end
 		# offsets is vcat(1, cumsum(counts))
 	    offsets = Vector{UInt32}(undef, K+1)
-	    offsets[1] = UInt32(1)
+	    offsets[1] = 0x00000001
 	    @inbounds for k in 1:K
 	        offsets[k+1] = offsets[k] + counts[k]
 	    end
@@ -57,7 +57,7 @@ function bucketize_refs(refs::Vector, K::Int, T)
 	        r = refs[i]
 	        p = next[r]
 	        perm[p] = UInt32(i)
-	        next[r] = p + UInt32(1)
+	        next[r] = p + 0x00000001
 	    end
 	    return Metal.zeros(T, length(refs)), MtlArray(UInt32.(perm)), MtlArray(UInt32.(offsets))
 	else
