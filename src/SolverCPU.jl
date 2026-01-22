@@ -100,13 +100,14 @@ function update_weights!(feM::FixedEffectSolverCPU, weights::AbstractWeights)
 end
 
 function scale!(scale::AbstractVector, refs::AbstractVector, interaction::AbstractVector, weights::AbstractVector)
-        fill!(scale, 0)
+    fill!(scale, 0)
 	@fastmath @inbounds @simd for i in eachindex(refs)
 		scale[refs[i]] += abs2(interaction[i]) * weights[i]
 	end
 	# Case of interaction variatble equal to zero in the category (issue #97)
-	for i in 1:length(scale)
-	    scale[i] = scale[i] > 0 ? (1 / sqrt(scale[i])) : 0.0
+	T = eltype(scale)
+	@fastmath @inbounds @simd for i in eachindex(scale)
+	    scale[i] = scale[i] > 0 ? (1 / sqrt(scale[i])) : zero(T)
 	end
 end
 
