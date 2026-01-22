@@ -108,17 +108,17 @@ function gather_kernel_bin!(fecoef, refs, α, y, cache, perm, offsets, ::Val{NT}
     Metal.threadgroup_barrier(Metal.MemoryFlagThreadGroup)  # sync + tg fence :contentReference[oaicite:6]{index=6}
 
     # tree reduction in shared memory
-    offset = UInt32(nt ÷ UInt32(2))
+    offset = UInt32(nt ÷ 0x00000002)
     while offset > 0
         if tid <= offset
             @inbounds shared[tid] += shared[tid + offset]
         end
         Metal.threadgroup_barrier(Metal.MemoryFlagThreadGroup)
-        offset ÷= UInt32(2)
+        offset ÷= 0x00000002
     end
 
     # one write per coefficient (no atomics needed if groups == K and 1 group per k)
-    if tid == UInt32(1)
+    if tid == 0x00000001
         @inbounds fecoef[k] += shared[1]
     end
 
