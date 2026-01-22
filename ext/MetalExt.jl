@@ -40,27 +40,28 @@ end
 
 function bucketize_refs(refs::Vector, K::Int, T)
 	if K < 100_000 && (length(refs) ÷ K >= 16)
-	    N = length(refs)
-	    counts = zeros(Int, K)
+		# count the number of obs per group
+	    counts = zeros(UInt32, K)
 	    @inbounds for r in refs
-	        counts[r] += 1
+	        counts[r] += UInt32(1)
 	    end
-	    offsets = Vector{Int}(undef, K+1)
-	    offsets[1] = 1
+		# offsets is vcat(1, cumsum(counts))
+	    offsets = Vector{UInt32}(undef, K+1)
+	    offsets[1] = UInt32(1)
 	    @inbounds for k in 1:K
 	        offsets[k+1] = offsets[k] + counts[k]
 	    end
-	    next = copy(offsets[1:K])  # write heads
-	    perm = Vector{UInt32}(undef, N)
-	    @inbounds for i in 1:N
+	    next = offsets[1:K]
+	    perm = Vector{UInt32}(undef, length(refs))
+	    @inbounds for i in eachindex(refs)
 	        r = refs[i]
 	        p = next[r]
-	        perm[p] = i
-	        next[r] = p + 1
+	        perm[p] = UInt32(i)
+	        next[r] = p + UInt32(1)
 	    end
-	    return Metal.zeros(T, length(refs)), MtlArray(Int32.(perm)), MtlArray(Int32.(offsets))
+	    return Metal.zeros(T, length(refs)), MtlArray(UInt32.(perm)), MtlArray(UInt32.(offsets))
 	else
-		return Metal.zeros(T, length(refs)), Metal.zeros(Int32, 1), Metal.zeros(Int32, 1)
+		return Metal.zeros(T, length(refs)), Metal.zeros(UInt32, 1), Metal.zeros(UInt32, 1)
 	end
 end
 
@@ -96,24 +97,24 @@ function gather_kernel_bin!(fecoef, refs, α, y, cache, perm, offsets, ::Val{NT}
     acc = zero(T)
 
     # each thread walks its portion of the bucket
-    j = start + Int32(tid - 1)
+    j = start + UInt32(tid - 1)
     while j <= stop
         i = @inbounds perm[j]
         @inbounds acc += (α * y[i] * cache[i])
-        j += Int32(nt)
+        j += UInt32(nt)
     end
 
     @inbounds shared[tid] = acc
     Metal.threadgroup_barrier(Metal.MemoryFlagThreadGroup)  # sync + tg fence :contentReference[oaicite:6]{index=6}
 
     # tree reduction in shared memory
-    offset = Int32(nt ÷ UInt32(2))
+    offset = UInt32(nt ÷ UInt32(2))
     while offset > 0
         if tid <= offset
             @inbounds shared[tid] += shared[tid + offset]
         end
         Metal.threadgroup_barrier(Metal.MemoryFlagThreadGroup)
-        offset ÷= Int32(2)
+        offset ÷= UInt32(2)
     end
 
     # one write per coefficient (no atomics needed if groups == K and 1 group per k)
