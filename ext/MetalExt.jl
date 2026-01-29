@@ -40,23 +40,23 @@ end
 
 function bucketize_refs(refs::Vector, n::Int)
 	# count the number of obs per group
-    counts = zeros(UInt32, n)
+    counts = zeros(Int, n)
     @inbounds for r in refs
-        counts[r] += 0x00000001
+        counts[r] += 1
     end
 	# offsets is vcat(1, cumsum(counts))
-    offsets = Vector{UInt32}(undef, n + 1)
-    offsets[1] = 0x00000001
+    offsets = Vector{Int}(undef, n + 1)
+    offsets[1] = 1
     @inbounds for k in 1:n
         offsets[k+1] = offsets[k] + counts[k]
     end
     next = offsets[1:n]
-    perm = Vector{UInt32}(undef, length(refs))
+    perm = Vector{Int}(undef, length(refs))
     @inbounds for i in eachindex(refs)
         r = refs[i]
         p = next[r]
-        perm[p] = UInt32(i)
-        next[r] = p + 0x00000001
+        perm[p] = i
+        next[r] = p + 1
     end
     return perm, offsets
 end
@@ -88,42 +88,42 @@ function FixedEffects.gather!(fecoef::MtlVector, refs::MtlVector, α::Number, y:
 end
 
 function gather_kernel_bin!(fecoef, refs, α, y, cache, perm, offsets, ::Val{NT}) where {NT}
-    k   = threadgroup_position_in_grid().x          # 1..K (Julia-style indexing) :contentReference[oaicite:2]{index=2}
-    tid = thread_position_in_threadgroup().x        # 1..nthreads :contentReference[oaicite:3]{index=3}
-    nt  = threads_per_threadgroup().x               # nthreads :contentReference[oaicite:4]{index=4}
+    k   = Int(threadgroup_position_in_grid().x)          # 1..K (Julia-style indexing) :contentReference[oaicite:2]{index=2}
+    tid = Int(thread_position_in_threadgroup().x)        # 1..nthreads :contentReference[oaicite:3]{index=3}
+    nt  = Int(threads_per_threadgroup().x)               # nthreads :contentReference[oaicite:4]{index=4}
 
     # threadgroup scratch
     T = eltype(fecoef)
     shared = Metal.MtlThreadGroupArray(T, NT)  # threadgroup-local array :contentReference[oaicite:5]{index=5}
 
     start = @inbounds offsets[k]
-    stop  = @inbounds offsets[k+1] - Int32(1)
+    stop  = @inbounds offsets[k+1] - 1
 
     acc = zero(T)
 
     # each thread walks its portion of the bucket
-    j = start + UInt32(tid - 1)
+    j = start + tid - 1
     while j <= stop
         i = @inbounds perm[j]
         @inbounds acc += (α * y[i] * cache[i])
-        j += UInt32(nt)
+        j += nt
     end
 
     @inbounds shared[tid] = acc
     Metal.threadgroup_barrier(Metal.MemoryFlagThreadGroup)  # sync + tg fence :contentReference[oaicite:6]{index=6}
 
     # tree reduction in shared memory
-    offset = UInt32(nt ÷ 0x00000002)
+    offset = nt ÷ 2
     while offset > 0
         if tid <= offset
             @inbounds shared[tid] += shared[tid + offset]
         end
         Metal.threadgroup_barrier(Metal.MemoryFlagThreadGroup)
-        offset ÷= 0x00000002
+        offset ÷= 2
     end
 
     # one write per coefficient (no atomics needed if groups == n and 1 group per k)
-    if tid == 0x00000001
+    if tid == 1
         @inbounds fecoef[k] += shared[1]
     end
 
