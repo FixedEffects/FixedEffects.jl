@@ -9,7 +9,7 @@ abstract type AbstractFixedEffectSolver{T} end
 works_with_view(::AbstractFixedEffectSolver) = false
 
 """
-`solve_residuals!(y, fes, w; method = :cpu, double_precision = method == :cpu, tol = 1e-8, maxiter = 10000, )`
+`solve_residuals!(y, fes, w; method = :cpu, double_precision = method == :cpu, tol = 1e-8, maxiter = 10000)`
 
 Returns ``y_i - X_i'\\beta`` where ``\\beta = argmin_{b} \\sum_i y_i - X_i'b``, where `X` denotes the matrix of fixed effects `fes`.
 
@@ -36,8 +36,10 @@ solve_residuals!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
 function solve_residuals!(y::Union{AbstractVector{<: Real}, AbstractMatrix{<: Real}}, fes::AbstractVector{<: FixedEffect}, w::AbstractWeights = uweights(eltype(y), size(y, 1)); 
-	method::Symbol = :cpu, double_precision::Bool = method == :cpu, 
-	tol::Real = double_precision ? 1e-8 : 1e-6, maxiter::Integer = 10000,
+	method::Symbol = :cpu, 
+	double_precision::Bool = method == :cpu, 
+	tol::Real = double_precision ? 1e-8 : 1e-6, 
+	maxiter::Integer = 10000,
 	nthreads = nothing)
 	any((length(fe) != size(y, 1) for fe in fes)) && throw("FixedEffects must have the same length as y")
 	any(ismissing.(fes)) && throw("FixedEffects must not have missing values")
@@ -60,10 +62,9 @@ function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSol
 	end
 	copyto!(feM.b, feM.r)
 	mul!(feM.x, feM.m', feM.b, 1, 0)
-
 	iter, converged = 1, true
     if length(feM.x.x) > 1
-        x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
+        x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter - 1)
         iter, converged = ch.mvps + 1, ch.isconverged
     end
 	mul!(feM.r, feM.m, feM.x, -1, 1)
@@ -152,9 +153,11 @@ solve_coefficients!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
 function solve_coefficients!(y::AbstractVector{<: Number}, fes::AbstractVector{<: FixedEffect}, w::AbstractWeights = uweights(eltype(y), length(y)); 
-		method::Symbol = :cpu, double_precision::Bool = method == :cpu, 
-	tol::Real = double_precision ? 1e-8 : 1e-6,  maxiter::Integer = 10000, 
-	nthreads = nothing)
+		method::Symbol = :cpu, 
+		double_precision::Bool = method == :cpu, 
+		tol::Real = double_precision ? 1e-8 : 1e-6,  
+		maxiter::Integer = 10000, 
+		nthreads = nothing)
 	any(ismissing.(fes)) && throw("Some FixedEffect has a missing value for reference or interaction")
 	any((length(fe) != length(y) for fe in fes))  && throw("FixedEffects must have the same length as y")
 	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method}, nthreads)
