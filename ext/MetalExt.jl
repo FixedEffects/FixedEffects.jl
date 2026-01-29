@@ -64,7 +64,7 @@ end
 function FixedEffectLinearMapMetal{T}(fes::Vector{<:FixedEffect}, nthreads) where {T}
 	fes2 = [_mtl(T, fe) for fe in fes]
 	scales = [Metal.zeros(T, fe.n) for fe in fes]
-	caches = [[Metal.zeros(T, length(fe.refs)), Metal.zeros(UInt32, 1), Metal.zeros(UInt32, 1)] for fe in fes]
+	caches = [[Metal.zeros(T, length(fe.refs)), Metal.zeros(Int, 1), Metal.zeros(Int, 1)] for fe in fes]
 	Threads.@threads for i in 1:length(fes)
 		refs = fes[i].refs
 		n = fes[i].n
