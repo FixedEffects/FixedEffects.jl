@@ -172,7 +172,11 @@ mutable struct FixedEffectSolverMetal{T} <: FixedEffects.AbstractFixedEffectSolv
 	fes::Vector{<:FixedEffect}
 end
 	
-function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:Metal}}, nthreads = 256) where {T}
+function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:Metal}}, nthreads = nothing) where {T}
+	if nthreads === nothing
+		nthreads = Int(device().maxThreadsPerThreadgroup.width)
+	end
+	nthreads = prevpow(2, nthreads)
 	m = FixedEffectLinearMapMetal{T}(fes, nthreads)
 	b = Metal.zeros(T, length(weights))
 	r = Metal.zeros(T, length(weights))
