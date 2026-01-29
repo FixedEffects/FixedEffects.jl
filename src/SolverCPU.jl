@@ -75,7 +75,10 @@ mutable struct FixedEffectSolverCPU{T} <: AbstractFixedEffectSolver{T}
 	hbar::FixedEffectCoefficients{<: AbstractVector{T}}
 end
 
-function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:cpu}}, nthreads = Threads.nthreads()) where {T}
+function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:cpu}}, nthreads = nothing) where {T}
+	if nthreads === nothing
+		nthreads = Threads.nthreads()
+	end
 	m = FixedEffectLinearMapCPU{T}(fes, Val{:cpu}, nthreads)
 	b = zeros(T, length(weights))
 	r = zeros(T, length(weights))
