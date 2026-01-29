@@ -9,7 +9,7 @@ abstract type AbstractFixedEffectSolver{T} end
 works_with_view(::AbstractFixedEffectSolver) = false
 
 """
-`solve_residuals!(y, fes, w; method = :cpu, double_precision = true, tol = 1e-8, maxiter = 10000, )`
+`solve_residuals!(y, fes, w; method = :cpu, double_precision = method == :cpu, tol = 1e-8, maxiter = 10000, )`
 
 Returns ``y_i - X_i'\\beta`` where ``\\beta = argmin_{b} \\sum_i y_i - X_i'b``, where `X` denotes the matrix of fixed effects `fes`.
 
@@ -17,8 +17,8 @@ Returns ``y_i - X_i'\\beta`` where ``\\beta = argmin_{b} \\sum_i y_i - X_i'b``, 
 * `y` : A `AbstractVector` or A `AbstractMatrix`
 * `fes`: A `Vector{<:FixedEffect}`
 * `w`: A vector of weights, i.e. `AbstractWeights`
-* `method` : A `Symbol` for the method. Default is :cpu. The option :gpu requires `using CUDA` or `using Metal' (in this case, it is recommanded to use the option `double_precision = false`).
-* `double_precision::Bool`: Should the demeaning operation use Float64 rather than Float32? Default to true.
+* `method` : A symbol between :cpu (default), :CUDA, or :METAL
+* `double_precision::Bool`: Should the demeaning operation use Float64 rather than Float32? Default to method == : cpu.
 * `tol` : Tolerance. Default to 1e-8 if `double_precision = true`, 1e-6 otherwise.
 * `maxiter` : Maximum number of iterations
 
@@ -119,7 +119,7 @@ end
 """
 Solve a least square problem for a set of FixedEffects
 
-`solve_coefficients!(y, fes, w; method = :cpu, maxiter = 10000, double_precision = true, tol = 1e-8)`
+`solve_coefficients!(y, fes, w; method = :cpu, double_precision = method = :cpu, tol = 1e-8, maxiter = 10000)`
 
 Returns ``\\beta = argmin_{b} \\sum_i w_i(y_i - X_i'b)`` where `X` denotes the matrix of fixed effects `fes`.
 
@@ -127,11 +127,10 @@ Returns ``\\beta = argmin_{b} \\sum_i w_i(y_i - X_i'b)`` where `X` denotes the m
 * `y` : A `AbstractVector` 
 * `fes`: A `Vector{<:FixedEffect}`
 * `w`: A vector of weights, i.e. `AbstractWeights`
-* `method` : A `Symbol` for the method. Default is :cpu. The option :gpu requires `using CUDA` (in this case, it is recommanded to use the option `double_precision = false`).
-* `double_precision::Bool`: Should the demeaning operation use Float64 rather than Float32? Default to true.
+* `method` : A symbol between :cpu (default), :CUDA, or :METAL
+* `double_precision::Bool`: Should the demeaning operation use Float64 rather than Float32? Default to method = :cpu.
 * `tol` : Tolerance. Default to 1e-8 if `double_precision = true`, 1e-6 otherwise.
 * `maxiter` : Maximum number of iterations
-* `nthreads` : Number of threads
 
 
 ### Returns
@@ -152,7 +151,8 @@ x = rand(10)
 solve_coefficients!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
-function solve_coefficients!(y::AbstractVector{<: Number}, fes::AbstractVector{<: FixedEffect}, w::AbstractWeights = uweights(eltype(y), length(y)); method::Symbol = :cpu, double_precision::Bool = eltype(y) == Float64, 
+function solve_coefficients!(y::AbstractVector{<: Number}, fes::AbstractVector{<: FixedEffect}, w::AbstractWeights = uweights(eltype(y), length(y)); 
+		method::Symbol = :cpu, double_precision::Bool = method == :cpu, 
 	tol::Real = double_precision ? 1e-8 : 1e-6,  maxiter::Integer = 10000, 
 	nthreads = nothing)
 	any(ismissing.(fes)) && throw("Some FixedEffect has a missing value for reference or interaction")
