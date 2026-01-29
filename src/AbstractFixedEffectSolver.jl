@@ -62,10 +62,9 @@ function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSol
 	end
 	copyto!(feM.b, feM.r)
 	mul!(feM.x, feM.m', feM.b, 1, 0)
-
 	iter, converged = 1, true
     if length(feM.x.x) > 1
-        x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
+        x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter - 1)
         iter, converged = ch.mvps + 1, ch.isconverged
     end
 	mul!(feM.r, feM.m, feM.x, -1, 1)
