@@ -39,10 +39,10 @@ end
 
 function bucketize_refs(refs::Vector, n::Int)
 	# count the number of obs per group
-	counts = zeros(Int, n)
-    @inbounds for r in refs
-        counts[r] += 1
-    end
+  counts = zeros(Int, n)
+  @inbounds for r in refs
+    counts[r] += 1
+  end
 	# offsets is vcat(1, cumsum(counts))
     offsets_mtl = Metal.@sync Metal.zeros(Int, n + 1; storage = Metal.SharedStorage)
     offsets = unsafe_wrap(Array{Int}, offsets_mtl, size(offsets_mtl))
