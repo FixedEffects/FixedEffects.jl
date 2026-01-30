@@ -1,6 +1,6 @@
 module CUDAExt
 using FixedEffects, CUDA
-using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!,  lsmr!, AbstractFixedEffectLinearMap
+using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!,  lsmr!, AbstractFixedEffectLinearMap, copy_internal!
 CUDA.allowscalar(false)
 
 ##############################################################################
@@ -160,6 +160,15 @@ function cache!_kernel!(cache, refs, interaction, weights, scale)
 	end
 end
 
+function FixedEffects.copy_internal!(feM::FixedEffectSolverCUDA, field::Symbol, r::AbstractVector)
+	copyto!(feM.tmp, r)
+	copyto!(getfield(feM, field), feM.tmp)
+end
+
+function FixedEffects.copy_internal!(r::AbstractVector, feM::FixedEffectSolverCUDA, field::Symbol)
+	copyto!(feM.tmp, getfield(feM, field))
+	copyto!(r, feM.tmp)
+end
 
 
 end

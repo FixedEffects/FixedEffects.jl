@@ -6,7 +6,6 @@
 ##
 ##############################################################################
 abstract type AbstractFixedEffectSolver{T} end
-works_with_view(::AbstractFixedEffectSolver) = false
 
 """
 `solve_residuals!(y, fes, w; method = :cpu, double_precision = method == :cpu, tol = 1e-8, maxiter = 10000)`
@@ -51,15 +50,7 @@ end
 
 function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSolver{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	# One cannot copy view of Vector (r) on GPU, so first collect the vector
-	if works_with_view(feM)
-		copyto!(feM.r, r)
-	else
-		copyto!(feM.tmp, r)
-		copyto!(feM.r, feM.tmp)
-	end
-	if !(feM.weights isa UnitWeights)
-		 feM.r .*= sqrt.(feM.weights)
-	end
+	copy_internal!(feM, :r, r)
 	copyto!(feM.b, feM.r)
 	mul!(feM.x, feM.m', feM.b, 1, 0)
 	iter, converged = 1, true
@@ -71,12 +62,7 @@ function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSol
 	if !(feM.weights isa UnitWeights)
 		feM.r ./=  sqrt.(feM.weights)
 	end
-	if works_with_view(feM)
-		copyto!(r, feM.r)
-	else
-		copyto!(feM.tmp, feM.r)
-		copyto!(r, feM.tmp)
-	end
+	copy_internal!(r, feM, :r)
 	return r, iter, converged
 end
 
@@ -166,12 +152,7 @@ end
 
 function FixedEffects.solve_coefficients!(r::AbstractVector, feM::AbstractFixedEffectSolver{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	# One cannot copy view of Vector (r) on GPU, so first collect the vector
-	if works_with_view(feM)
-		copyto!(feM.b, r)
-	else
-		copyto!(feM.tmp, r)
-		copyto!(feM.b, feM.tmp)
-	end
+	copy_internal!(feM, :b, r)
 	if !(feM.weights isa UnitWeights)
 		feM.b .*= sqrt.(feM.weights)
 	end

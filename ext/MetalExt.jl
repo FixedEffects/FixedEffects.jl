@@ -1,6 +1,6 @@
 module MetalExt
 using FixedEffects, Metal
-using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!, lsmr!, AbstractFixedEffectLinearMap
+using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!, lsmr!, AbstractFixedEffectLinearMap, copy_internal!
 Metal.allowscalar(false)
 
 ##############################################################################
@@ -40,38 +40,40 @@ end
 
 function bucketize_refs(refs::Vector, n::Int)
 	# count the number of obs per group
-    counts = zeros(Int, n)
+	counts = zeros(Int, n)
     @inbounds for r in refs
         counts[r] += 1
     end
 	# offsets is vcat(1, cumsum(counts))
-    offsets = Vector{Int}(undef, n + 1)
-    offsets[1] = 1
+    offsets_mtl = Metal.@sync Metal.zeros(Int, n + 1; storage = Metal.SharedStorage)
+    offsets = unsafe_wrap(Array{Int}, offsets_mtl, size(offsets_mtl))
     @inbounds for k in 1:n
         offsets[k+1] = offsets[k] + counts[k]
     end
+
+    perm_mtl = Metal.@sync Metal.zeros(Int, length(refs); storage = Metal.SharedStorage)
+    perm = unsafe_wrap(Array{Int}, perm_mtl, size(perm_mtl))
     next = offsets[1:n]
-    perm = Vector{Int}(undef, length(refs))
     @inbounds for i in eachindex(refs)
         r = refs[i]
         p = next[r]
         perm[p] = i
         next[r] = p + 1
     end
-    return perm, offsets
+    return perm_mtl, offsets_mtl
 end
 
 function FixedEffectLinearMapMetal{T}(fes::Vector{<:FixedEffect}, nthreads) where {T}
 	fes2 = [_mtl(T, fe) for fe in fes]
 	scales = [Metal.zeros(T, fe.n) for fe in fes]
-	caches = [[Metal.zeros(T, length(fe.refs)), Metal.zeros(Int, 1), Metal.zeros(Int, 1)] for fe in fes]
+	caches = [Any[Metal.zeros(T, length(fe.refs)), Metal.zeros(Int, 1), Metal.zeros(Int, 1)] for fe in fes]
 	Threads.@threads for i in 1:length(fes)
 		refs = fes[i].refs
 		n = fes[i].n
 		if n < min(100_000,  div(length(refs), 16))	
 			out = bucketize_refs(refs, n)
-			caches[i][2] = MtlArray(out[1])
-			caches[i][3] = MtlArray(out[2])
+			caches[i][2] = out[1]
+			caches[i][3] = out[2]
 		end
 	end
 	return FixedEffectLinearMapMetal{T}(fes2, scales, caches, nthreads)
@@ -168,9 +170,9 @@ mutable struct FixedEffectSolverMetal{T} <: FixedEffects.AbstractFixedEffectSolv
 	v::FixedEffectCoefficients{<: AbstractVector{T}}
 	h::FixedEffectCoefficients{<: AbstractVector{T}}
 	hbar::FixedEffectCoefficients{<: AbstractVector{T}}
-	tmp::Vector{T} # used to convert AbstractVector to Vector{T}
 	fes::Vector{<:FixedEffect}
 end
+
 	
 function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:Metal}}, nthreads = nothing) where {T}
 	if nthreads === nothing
@@ -178,14 +180,13 @@ function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, w
 	end
 	nthreads = prevpow(2, nthreads)
 	m = FixedEffectLinearMapMetal{T}(fes, nthreads)
-	b = Metal.zeros(T, length(weights))
-	r = Metal.zeros(T, length(weights))
+	b = Metal.zeros(T, length(weights); storage = Metal.SharedStorage)
+	r = Metal.zeros(T, length(weights); storage = Metal.SharedStorage)
 	x = FixedEffectCoefficients([Metal.zeros(T, fe.n) for fe in fes])
 	v = FixedEffectCoefficients([Metal.zeros(T, fe.n) for fe in fes])
 	h = FixedEffectCoefficients([Metal.zeros(T, fe.n) for fe in fes])
 	hbar = FixedEffectCoefficients([Metal.zeros(T, fe.n) for fe in fes])
-	tmp = zeros(T, length(weights))
-	feM = FixedEffectSolverMetal{T}(m, Metal.zeros(T, length(weights)), b, r, x, v, h, hbar, tmp, fes)
+	feM = FixedEffectSolverMetal{T}(m, Metal.zeros(T, length(weights)), b, r, x, v, h, hbar, fes)
 	FixedEffects.update_weights!(feM, weights)
 end
 
@@ -235,6 +236,16 @@ function cache!_kernel!(cache, refs, interaction, weights, scale)
 		@inbounds cache[i] = interaction[i] * sqrt(weights[i]) * scale[refs[i]]
 	end
 	return nothing
+end
+
+function FixedEffects.copy_internal!(feM::FixedEffectSolverMetal{T}, field::Symbol, r::AbstractVector) where {T}
+	r2 = unsafe_wrap(Array{T}, getfield(feM, field), size(getfield(feM, field)))
+	copyto!(r2, r)
+end
+
+function FixedEffects.copy_internal!(r::AbstractVector, feM::FixedEffectSolverMetal{T}, field::Symbol) where {T}
+	r2 = unsafe_wrap(Array{T}, getfield(feM, field), size(getfield(feM, field)))
+	copyto!(r, r2)
 end
 
 

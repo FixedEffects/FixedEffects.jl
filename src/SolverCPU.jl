@@ -65,8 +65,6 @@ function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::Abstr
 	return update_weights!(FixedEffectSolverCPU(m, weights, b, r, x, v, h, hbar), weights)
 end
 
-works_with_view(x::FixedEffectSolverCPU) = true
-
 function update_weights!(feM::FixedEffectSolverCPU, weights::AbstractWeights)
 	for (scale, fe) in zip(feM.m.scales, feM.m.fes)
 		scale!(scale, fe.refs, fe.interaction, weights)
@@ -94,4 +92,12 @@ function cache!(cache::AbstractVector, refs::AbstractVector, interaction::Abstra
 	@spawn_for_chunks 1_000_000 for i in eachindex(cache)
 		@inbounds @fastmath cache[i] = interaction[i] * sqrt(weights[i]) * scale[refs[i]]
 	end
+end
+
+function copy_internal!(feM::FixedEffectSolverCPU, field::Symbol, r::AbstractVector)
+	copyto!(getfield(feM, field), r)
+end
+
+function copy_internal!(r::AbstractVector, feM::FixedEffectSolverCPU, field::Symbol)
+	copyto!(r, getfield(feM, field))
 end
