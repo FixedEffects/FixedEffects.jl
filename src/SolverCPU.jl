@@ -21,43 +21,19 @@ end
 # multithreaded gather seemds to be slower
 function gather!(fecoef::AbstractVector, refs::AbstractVector, α::Number, 
 	y::AbstractVector, cache::AbstractVector, nthreads::Integer)
-	if α == 1
-		@fastmath @inbounds @simd for i in eachindex(y)
-			fecoef[refs[i]] += y[i] * cache[i]
-		end
-	else
-		@fastmath @inbounds @simd for i in eachindex(y)
-			fecoef[refs[i]] += α * y[i] * cache[i]
-		end
+	@fastmath @inbounds @simd for i in eachindex(y)
+		fecoef[refs[i]] += α * y[i] * cache[i]
 	end
 end
 
 function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector, 
 	refs::AbstractVector, cache::AbstractVector, nthreads::Integer)
-	n_each = div(length(y), nthreads)
-	Threads.@threads for t in 1:nthreads
-		scatter!(y, α, fecoef, refs, cache, ((t - 1) * n_each + 1):(t * n_each))
+	@spawn_for_chunks 1_000_000 for i in eachindex(y)
+		@inbounds y[i] += α * fecoef[refs[i]] * cache[i]
 	end
-	scatter!(y, α, fecoef, refs, cache, (nthreads * n_each + 1):length(y))
 end
 
-function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector, 
-	refs::AbstractVector, cache::AbstractVector, irange::AbstractRange)
-	# α is actually only 1 or -1 so do special path for them
-	if α == 1
-		@fastmath @inbounds @simd for i in irange
-			y[i] += fecoef[refs[i]] * cache[i]
-		end
-	elseif α == -1
-		@fastmath @inbounds @simd for i in irange
-			y[i] -= fecoef[refs[i]] * cache[i]
-		end
-	else
-		@fastmath @inbounds @simd for i in irange
-			y[i] += α * fecoef[refs[i]] * cache[i]
-		end
-	end
-end
+
 ##############################################################################
 ##
 ## Implement AbstractFixedEffectSolver interface
@@ -75,7 +51,10 @@ mutable struct FixedEffectSolverCPU{T} <: AbstractFixedEffectSolver{T}
 	hbar::FixedEffectCoefficients{<: AbstractVector{T}}
 end
 
-function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:cpu}}, nthreads = Threads.nthreads()) where {T}
+function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:cpu}}, nthreads = nothing) where {T}
+	if nthreads === nothing
+		nthreads = Threads.nthreads()
+	end
 	m = FixedEffectLinearMapCPU{T}(fes, Val{:cpu}, nthreads)
 	b = zeros(T, length(weights))
 	r = zeros(T, length(weights))
@@ -112,7 +91,7 @@ function scale!(scale::AbstractVector, refs::AbstractVector, interaction::Abstra
 end
 
 function cache!(cache::AbstractVector, refs::AbstractVector, interaction::AbstractVector, weights::AbstractVector, scale::AbstractVector)
-	@fastmath @inbounds @simd for i in eachindex(cache)
-		cache[i] = interaction[i] * sqrt(weights[i]) * scale[refs[i]]
+	@spawn_for_chunks 1_000_000 for i in eachindex(cache)
+		@inbounds @fastmath cache[i] = interaction[i] * sqrt(weights[i]) * scale[refs[i]]
 	end
 end

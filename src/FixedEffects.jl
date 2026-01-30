@@ -9,7 +9,7 @@ module FixedEffects
 using Base: @propagate_inbounds
 using LinearAlgebra: LinearAlgebra, Adjoint, mul!, rmul!, norm, axpy!
 using StatsBase: AbstractWeights, UnitWeights, Weights, uweights
-using GroupedArrays: GroupedArray
+using GroupedArrays: GroupedArray, @spawn_for_chunks
 using Printf: @printf
 
 ##############################################################################

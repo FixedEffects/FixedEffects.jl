@@ -32,11 +32,9 @@ pid = rand(1:M, N)
 fid = [rand(max(1, div(x, 8)-10):min(O, div(x, 8)+10)) for x in pid]
 x = rand(N)
 fes = [FixedEffect(pid), FixedEffect(fid)]
-
-
 @time solve_residuals!([x x x x], fes; double_precision = false, maxiter = 100)
-# 36.554763 seconds (98.71 M allocations: 5.253 GiB, 1.11% gc time, 114.45% compilation time: 7% of which was recompilation)
+#  28.370662 seconds (797.45 k allocations: 513.684 MiB, 0.05% gc time, 0.88% compilation time)
 @time solve_residuals!([x x x x], fes; double_precision = false, method = :Metal, maxiter = 100)
-# 20.652590 seconds (79.33 M allocations: 4.114 GiB, 0.75% gc time, 162.10% compilation time: <1% of which was recompilation)
+#  6.775223 seconds (9.18 M allocations: 713.836 MiB, 0.62% gc time, 18.49% compilation time: <1% of which was recompilation)
 
 
