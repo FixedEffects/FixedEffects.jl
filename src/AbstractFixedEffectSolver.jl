@@ -42,7 +42,7 @@ function solve_residuals!(y::Union{AbstractVector{<: Real}, AbstractMatrix{<: Re
 	nthreads = nothing)
 	any((length(fe) != size(y, 1) for fe in fes)) && throw("FixedEffects must have the same length as y")
 	any(ismissing.(fes)) && throw("FixedEffects must not have missing values")
-	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method}, nthreads)
+	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method})
 	solve_residuals!(y, feM; maxiter = maxiter, tol = tol)
 end
 
@@ -149,7 +149,7 @@ function solve_coefficients!(y::AbstractVector{<: Number}, fes::AbstractVector{<
 		nthreads = nothing)
 	any(ismissing.(fes)) && throw("Some FixedEffect has a missing value for reference or interaction")
 	any((length(fe) != length(y) for fe in fes))  && throw("FixedEffects must have the same length as y")
-	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method}, nthreads)
+	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method})
 	solve_coefficients!(y, feM; maxiter = maxiter, tol = tol)
 end
 
