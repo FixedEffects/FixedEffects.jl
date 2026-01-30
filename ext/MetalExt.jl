@@ -47,6 +47,7 @@ function bucketize_refs(refs::Vector, n::Int)
 	# offsets is vcat(1, cumsum(counts))
     offsets_mtl = Metal.@sync Metal.zeros(Int, n + 1; storage = Metal.SharedStorage)
     offsets = unsafe_wrap(Array{Int}, offsets_mtl, size(offsets_mtl))
+    offsets[1] = 1
     @inbounds for k in 1:n
         offsets[k+1] = offsets[k] + counts[k]
     end
@@ -239,13 +240,15 @@ function cache!_kernel!(cache, refs, interaction, weights, scale)
 end
 
 function FixedEffects.copy_internal!(feM::FixedEffectSolverMetal{T}, field::Symbol, r::AbstractVector) where {T}
-	r2 = unsafe_wrap(Array{T}, getfield(feM, field), size(getfield(feM, field)))
-	copyto!(r2, r)
+	synchronize()
+	feM_r = unsafe_wrap(Array{T}, getfield(feM, field), size(getfield(feM, field)))
+	copyto!(feM_r, r)
 end
 
 function FixedEffects.copy_internal!(r::AbstractVector, feM::FixedEffectSolverMetal{T}, field::Symbol) where {T}
-	r2 = unsafe_wrap(Array{T}, getfield(feM, field), size(getfield(feM, field)))
-	copyto!(r, r2)
+	synchronize()
+	feM_r = unsafe_wrap(Array{T}, getfield(feM, field), size(getfield(feM, field)))
+	copyto!(r, feM_r)
 end
 
 
