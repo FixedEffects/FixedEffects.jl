@@ -29,7 +29,7 @@ function LinearAlgebra.mul!(fecoefs::FixedEffectCoefficients,
 	fem = adjoint(Cfem)
 	rmul!(fecoefs, β)
 	for (fecoef, fe, cache) in zip(fecoefs.x, fem.fes, fem.caches)
-		gather!(fecoef, fe.refs, α, y, cache, fem.nthreads)
+		gather!(fecoef, fe.refs, α, y, cache)
 	end
 	return fecoefs
 end
@@ -38,7 +38,7 @@ function LinearAlgebra.mul!(y::AbstractVector, fem::AbstractFixedEffectLinearMap
 			  fecoefs::FixedEffectCoefficients, α::Number, β::Number)
 	rmul!(y, β)
 	for (fecoef, fe, cache) in zip(fecoefs.x, fem.fes, fem.caches)
-		scatter!(y, α, fecoef, fe.refs, cache, fem.nthreads)
+		scatter!(y, α, fecoef, fe.refs, cache)
 	end
 	return y
 end
