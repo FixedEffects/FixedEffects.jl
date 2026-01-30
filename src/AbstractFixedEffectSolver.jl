@@ -51,6 +51,9 @@ end
 function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSolver{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	# One cannot copy view of Vector (r) on GPU, so first collect the vector
 	copy_internal!(feM, :r, r)
+	if !(feM.weights isa UnitWeights)
+		feM.r .*= sqrt.(feM.weights)
+	end
 	copyto!(feM.b, feM.r)
 	mul!(feM.x, feM.m', feM.b, 1, 0)
 	iter, converged = 1, true
