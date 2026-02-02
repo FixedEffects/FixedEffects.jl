@@ -1,6 +1,6 @@
 module CUDAExt
 using FixedEffects, CUDA
-using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!,  lsmr!, AbstractFixedEffectLinearMap
+using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!,  lsmr!, AbstractFixedEffectLinearMap, copy_internal!
 CUDA.allowscalar(false)
 
 ##############################################################################
@@ -36,17 +36,17 @@ mutable struct FixedEffectLinearMapCUDA{T} <: AbstractFixedEffectLinearMap{T}
 	fes::Vector{<:FixedEffect}
 	scales::Vector{<:AbstractVector}
 	caches::Vector{<:AbstractVector}
-	nthreads::Int
 end
 
-function FixedEffectLinearMapCUDA{T}(fes::Vector{<:FixedEffect}, nthreads) where {T}
+function FixedEffectLinearMapCUDA{T}(fes::Vector{<:FixedEffect}) where {T}
 	fes = [_cu(T, fe) for fe in fes]
 	scales = [CUDA.zeros(T, fe.n) for fe in fes]
 	caches = [CUDA.zeros(T, length(fes[1].interaction)) for fe in fes]
-	return FixedEffectLinearMapCUDA{T}(fes, scales, caches, nthreads)
+	return FixedEffectLinearMapCUDA{T}(fes, scales, caches)
 end
 
-function FixedEffects.gather!(fecoef::CuVector, refs::CuVector, α::Number, y::CuVector, cache::CuVector, nthreads::Integer)
+function FixedEffects.gather!(fecoef::CuVector, refs::CuVector, α::Number, y::CuVector, cache::CuVector)
+	nthreads = 256
 	nblocks = cld(length(y), nthreads) 
 	@cuda threads=nthreads blocks=nblocks gather_kernel!(fecoef, refs, α, y, cache)    
 end
@@ -61,7 +61,8 @@ function gather_kernel!(fecoef, refs, α, y, cache)
 	end
 end
 
-function FixedEffects.scatter!(y::CuVector, α::Number, fecoef::CuVector, refs::CuVector, cache::CuVector, nthreads::Integer)
+function FixedEffects.scatter!(y::CuVector, α::Number, fecoef::CuVector, refs::CuVector, cache::CuVector)
+	nthreads = 256
 	nblocks = cld(length(y), nthreads)
 	@cuda threads=nthreads blocks=nblocks scatter_kernel!(y, α, fecoef, refs, cache)
 end
@@ -101,11 +102,7 @@ function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, w
 end
 
 function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:CUDA}}, nthreads = nothing) where {T}
-	if nthreads === nothing
-		nthreads = 256
-	end
-	nthreads = prevpow(2, nthreads)
-	m = FixedEffectLinearMapCUDA{T}(fes, nthreads)
+	m = FixedEffectLinearMapCUDA{T}(fes)
 	b = CUDA.zeros(T, length(weights))
 	r = CUDA.zeros(T, length(weights))
 	x = FixedEffectCoefficients([CUDA.zeros(T, fe.n) for fe in fes])
@@ -120,15 +117,16 @@ end
 function FixedEffects.update_weights!(feM::FixedEffectSolverCUDA{T}, weights::AbstractWeights) where {T}
 	copyto!(feM.weights, _cu(T, weights))
 	for (scale, fe) in zip(feM.m.scales, feM.m.fes)
-		scale!(scale, fe.refs, fe.interaction, feM.weights, feM.m.nthreads)
+		scale!(scale, fe.refs, fe.interaction, feM.weights)
 	end
 	for (cache, scale, fe) in zip(feM.m.caches, feM.m.scales, feM.m.fes)
-		cache!(cache, fe.refs, fe.interaction, feM.weights, scale, feM.m.nthreads)
+		cache!(cache, fe.refs, fe.interaction, feM.weights, scale)
 	end	
 	return feM
 end
 
-function scale!(scale::CuVector, refs::CuVector, interaction::CuVector, weights::CuVector, nthreads::Integer)
+function scale!(scale::CuVector, refs::CuVector, interaction::CuVector, weights::CuVector)
+	nthreads = 256
 	nblocks = cld(length(refs), nthreads) 
     fill!(scale, 0)
 	@cuda threads=nthreads blocks=nblocks scale_kernel!(scale, refs, interaction, weights)
@@ -145,7 +143,8 @@ function scale_kernel!(scale, refs, interaction, weights)
 	end
 end
 
-function cache!(cache::CuVector, refs::CuVector, interaction::CuVector, weights::CuVector, scale::CuVector, nthreads::Integer)
+function cache!(cache::CuVector, refs::CuVector, interaction::CuVector, weights::CuVector, scale::CuVector)
+	nthreads = 256
 	nblocks = cld(length(cache), nthreads) 
 	@cuda threads=nthreads blocks=nblocks cache!_kernel!(cache, refs, interaction, weights, scale)
 end
@@ -160,6 +159,15 @@ function cache!_kernel!(cache, refs, interaction, weights, scale)
 	end
 end
 
+function FixedEffects.copy_internal!(feM::FixedEffectSolverCUDA, field::Symbol, r::AbstractVector)
+	copyto!(feM.tmp, r)
+	copyto!(getfield(feM, field), feM.tmp)
+end
+
+function FixedEffects.copy_internal!(r::AbstractVector, feM::FixedEffectSolverCUDA, field::Symbol)
+	copyto!(feM.tmp, getfield(feM, field))
+	copyto!(r, feM.tmp)
+end
 
 
 end

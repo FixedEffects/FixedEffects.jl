@@ -6,7 +6,6 @@
 ##
 ##############################################################################
 abstract type AbstractFixedEffectSolver{T} end
-works_with_view(::AbstractFixedEffectSolver) = false
 
 """
 `solve_residuals!(y, fes, w; method = :cpu, double_precision = method == :cpu, tol = 1e-8, maxiter = 10000)`
@@ -43,7 +42,7 @@ function solve_residuals!(y::Union{AbstractVector{<: Real}, AbstractMatrix{<: Re
 	nthreads = nothing)
 	any((length(fe) != size(y, 1) for fe in fes)) && throw("FixedEffects must have the same length as y")
 	any(ismissing.(fes)) && throw("FixedEffects must not have missing values")
-	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method}, nthreads)
+	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method})
 	solve_residuals!(y, feM; maxiter = maxiter, tol = tol)
 end
 
@@ -51,14 +50,9 @@ end
 
 function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSolver{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	# One cannot copy view of Vector (r) on GPU, so first collect the vector
-	if works_with_view(feM)
-		copyto!(feM.r, r)
-	else
-		copyto!(feM.tmp, r)
-		copyto!(feM.r, feM.tmp)
-	end
+	copy_internal!(feM, :r, r)
 	if !(feM.weights isa UnitWeights)
-		 feM.r .*= sqrt.(feM.weights)
+		feM.r .*= sqrt.(feM.weights)
 	end
 	copyto!(feM.b, feM.r)
 	mul!(feM.x, feM.m', feM.b, 1, 0)
@@ -71,12 +65,7 @@ function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSol
 	if !(feM.weights isa UnitWeights)
 		feM.r ./=  sqrt.(feM.weights)
 	end
-	if works_with_view(feM)
-		copyto!(r, feM.r)
-	else
-		copyto!(feM.tmp, feM.r)
-		copyto!(r, feM.tmp)
-	end
+	copy_internal!(r, feM, :r)
 	return r, iter, converged
 end
 
@@ -160,18 +149,13 @@ function solve_coefficients!(y::AbstractVector{<: Number}, fes::AbstractVector{<
 		nthreads = nothing)
 	any(ismissing.(fes)) && throw("Some FixedEffect has a missing value for reference or interaction")
 	any((length(fe) != length(y) for fe in fes))  && throw("FixedEffects must have the same length as y")
-	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method}, nthreads)
+	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method})
 	solve_coefficients!(y, feM; maxiter = maxiter, tol = tol)
 end
 
 function FixedEffects.solve_coefficients!(r::AbstractVector, feM::AbstractFixedEffectSolver{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	# One cannot copy view of Vector (r) on GPU, so first collect the vector
-	if works_with_view(feM)
-		copyto!(feM.b, r)
-	else
-		copyto!(feM.tmp, r)
-		copyto!(feM.b, feM.tmp)
-	end
+	copy_internal!(feM, :b, r)
 	if !(feM.weights isa UnitWeights)
 		feM.b .*= sqrt.(feM.weights)
 	end

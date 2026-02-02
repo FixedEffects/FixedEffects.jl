@@ -8,26 +8,25 @@ mutable struct FixedEffectLinearMapCPU{T} <: AbstractFixedEffectLinearMap{T}
 	fes::Vector{<:FixedEffect}
 	scales::Vector{<:AbstractVector}
 	caches::Vector{<:AbstractVector}
-	nthreads::Int
 end
 
-function FixedEffectLinearMapCPU{T}(fes::Vector{<:FixedEffect}, ::Type{Val{:cpu}}, nthreads) where {T}
+function FixedEffectLinearMapCPU{T}(fes::Vector{<:FixedEffect}) where {T}
 	scales = [zeros(T, fe.n) for fe in fes]
 	caches = [zeros(T, length(fes[1].interaction)) for fe in fes]
-	return FixedEffectLinearMapCPU{T}(fes, scales, caches, nthreads)
+	return FixedEffectLinearMapCPU{T}(fes, scales, caches)
 end
 
 
 # multithreaded gather seemds to be slower
 function gather!(fecoef::AbstractVector, refs::AbstractVector, α::Number, 
-	y::AbstractVector, cache::AbstractVector, nthreads::Integer)
+	y::AbstractVector, cache::AbstractVector)
 	@fastmath @inbounds @simd for i in eachindex(y)
 		fecoef[refs[i]] += α * y[i] * cache[i]
 	end
 end
 
 function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector, 
-	refs::AbstractVector, cache::AbstractVector, nthreads::Integer)
+	refs::AbstractVector, cache::AbstractVector)
 	@spawn_for_chunks 1_000_000 for i in eachindex(y)
 		@inbounds y[i] += α * fecoef[refs[i]] * cache[i]
 	end
@@ -52,10 +51,7 @@ mutable struct FixedEffectSolverCPU{T} <: AbstractFixedEffectSolver{T}
 end
 
 function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:cpu}}, nthreads = nothing) where {T}
-	if nthreads === nothing
-		nthreads = Threads.nthreads()
-	end
-	m = FixedEffectLinearMapCPU{T}(fes, Val{:cpu}, nthreads)
+	m = FixedEffectLinearMapCPU{T}(fes)
 	b = zeros(T, length(weights))
 	r = zeros(T, length(weights))
 	x = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
@@ -64,8 +60,6 @@ function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::Abstr
 	hbar = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
 	return update_weights!(FixedEffectSolverCPU(m, weights, b, r, x, v, h, hbar), weights)
 end
-
-works_with_view(x::FixedEffectSolverCPU) = true
 
 function update_weights!(feM::FixedEffectSolverCPU, weights::AbstractWeights)
 	for (scale, fe) in zip(feM.m.scales, feM.m.fes)
@@ -94,4 +88,12 @@ function cache!(cache::AbstractVector, refs::AbstractVector, interaction::Abstra
 	@spawn_for_chunks 1_000_000 for i in eachindex(cache)
 		@inbounds @fastmath cache[i] = interaction[i] * sqrt(weights[i]) * scale[refs[i]]
 	end
+end
+
+function copy_internal!(feM::FixedEffectSolverCPU, field::Symbol, r::AbstractVector)
+	copyto!(getfield(feM, field), r)
+end
+
+function copy_internal!(r::AbstractVector, feM::FixedEffectSolverCPU, field::Symbol)
+	copyto!(r, getfield(feM, field))
 end
