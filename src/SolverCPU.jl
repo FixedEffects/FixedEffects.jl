@@ -27,7 +27,7 @@ end
 
 function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector, 
 	refs::AbstractVector, cache::AbstractVector)
-	@spawn_for_chunks 1_000_000 for i in eachindex(y)
+	@spawn_for_chunks 100_000 for i in eachindex(y)
 		@inbounds y[i] += α * fecoef[refs[i]] * cache[i]
 	end
 end
@@ -85,7 +85,7 @@ function scale!(scale::AbstractVector, refs::AbstractVector, interaction::Abstra
 end
 
 function cache!(cache::AbstractVector, refs::AbstractVector, interaction::AbstractVector, weights::AbstractVector, scale::AbstractVector)
-	@spawn_for_chunks 1_000_000 for i in eachindex(cache)
+	@spawn_for_chunks 100_000 for i in eachindex(cache)
 		@inbounds @fastmath cache[i] = interaction[i] * sqrt(weights[i]) * scale[refs[i]]
 	end
 end
