@@ -1,5 +1,25 @@
-using FixedEffects, Random, Statistics
+using FixedEffects, Random, Statistics, BenchmarkTools, GroupedArrays
 Random.seed!(1234)
+
+
+function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector, 
+	refs::AbstractVector, cache::AbstractVector; chunksize = 1_000_000)
+	GroupedArrays.@spawn_for_chunks chunksize for i in eachindex(y)
+		@inbounds y[i] += α * fecoef[refs[i]] * cache[i]
+	end
+end
+
+n = 10_000_000
+N = 1_000_000
+refs = rand(1:N, n) 
+fecoef = rand(N)
+cache = rand(n)
+y = zeros(n)
+@btime scatter!(y, 1.0, fecoef, refs, cache; chunksize = 1_000_000)
+@btime scatter!(y, 1.0, fecoef, refs, cache; chunksize = 100_000)
+
+
+
 N = 10000000
 K = 100
 id1 = rand(1:div(N, K), N)
