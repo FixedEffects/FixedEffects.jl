@@ -96,12 +96,7 @@ mutable struct FixedEffectSolverCUDA{T} <: FixedEffects.AbstractFixedEffectSolve
 	fes::Vector{<:FixedEffect}
 end
 
-function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:gpu}}, nthreads = nothing) where {T}
-	Base.depwarn("The method :gpu is deprecated. Use either :CUDA or :Metal")
-	AbstractFixedEffectSolver{T}(fes, weights, Val(:CUDA), nthreads)
-end
-
-function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:CUDA}}, nthreads = nothing) where {T}
+function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:CUDA}}) where {T}
 	m = FixedEffectLinearMapCUDA{T}(fes)
 	b = CUDA.zeros(T, length(weights))
 	r = CUDA.zeros(T, length(weights))

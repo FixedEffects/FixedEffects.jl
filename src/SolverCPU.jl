@@ -17,10 +17,11 @@ function FixedEffectLinearMapCPU{T}(fes::Vector{<:FixedEffect}) where {T}
 end
 
 
-# multithreaded gather seemds to be slower
+# multithreaded gather seems to be slower
 function gather!(fecoef::AbstractVector, refs::AbstractVector, α::Number, 
 	y::AbstractVector, cache::AbstractVector)
-	@fastmath @inbounds @simd for i in eachindex(y)
+	# no @simd: multiple i may write to the same fecoef[refs[i]]
+	@fastmath @inbounds for i in eachindex(y)
 		fecoef[refs[i]] += α * y[i] * cache[i]
 	end
 end
@@ -50,7 +51,8 @@ mutable struct FixedEffectSolverCPU{T} <: AbstractFixedEffectSolver{T}
 	hbar::FixedEffectCoefficients{<: AbstractVector{T}}
 end
 
-function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:cpu}}, nthreads = nothing) where {T}
+
+function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:cpu}}) where {T}
 	m = FixedEffectLinearMapCPU{T}(fes)
 	b = zeros(T, length(weights))
 	r = zeros(T, length(weights))
@@ -60,6 +62,7 @@ function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::Abstr
 	hbar = FixedEffectCoefficients([zeros(T, fe.n) for fe in fes])
 	return update_weights!(FixedEffectSolverCPU(m, weights, b, r, x, v, h, hbar), weights)
 end
+
 
 function update_weights!(feM::FixedEffectSolverCPU, weights::AbstractWeights)
 	for (scale, fe) in zip(feM.m.scales, feM.m.fes)
@@ -74,10 +77,11 @@ end
 
 function scale!(scale::AbstractVector, refs::AbstractVector, interaction::AbstractVector, weights::AbstractVector)
     fill!(scale, 0)
-	@fastmath @inbounds @simd for i in eachindex(refs)
+	# no @simd: multiple i may write to the same scale[refs[i]]
+	@fastmath @inbounds for i in eachindex(refs)
 		scale[refs[i]] += abs2(interaction[i]) * weights[i]
 	end
-	# Case of interaction variatble equal to zero in the category (issue #97)
+	# Case of interaction variable equal to zero in the category (issue #97)
 	T = eltype(scale)
 	@fastmath @inbounds @simd for i in eachindex(scale)
 	    scale[i] = scale[i] > 0 ? (1 / sqrt(scale[i])) : zero(T)
@@ -97,3 +101,5 @@ end
 function copy_internal!(r::AbstractVector, feM::FixedEffectSolverCPU, field::Symbol)
 	copyto!(r, getfield(feM, field))
 end
+
+

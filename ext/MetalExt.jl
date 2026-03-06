@@ -176,7 +176,7 @@ mutable struct FixedEffectSolverMetal{T} <: FixedEffects.AbstractFixedEffectSolv
 end
 
 	
-function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:Metal}}, nthreads = nothing) where {T}
+function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:Metal}}) where {T}
 	m = FixedEffectLinearMapMetal{T}(fes)
 	b = Metal.zeros(T, length(weights); storage = Metal.SharedStorage)
 	r = Metal.zeros(T, length(weights); storage = Metal.SharedStorage)

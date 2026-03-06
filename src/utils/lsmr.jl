@@ -58,8 +58,6 @@ function lsmr!(x, A, b, v, h, hbar;
     
     T = Base.promote_op(/, eltype(b), eltype(A))
     Tr = real(T)
-    normrs = Tr[]
-    normArs = Tr[]
     conlim > 0 ? ctol = convert(Tr, inv(conlim)) : ctol = zero(Tr)
     # form the first vectors u and v (satisfy  β*u = b,  α*v = A'u)    
     u = mul!(b, A, x, -1, 1)
@@ -91,14 +89,13 @@ function lsmr!(x, A, b, v, h, hbar;
     normA, condA, normx = -one(Tr), -one(Tr), -one(Tr)
     normA2 = abs2(α)
     maxrbar = zero(Tr)
-    minrbar = 1e100
+    minrbar = convert(Tr, 1e100)
 
     # Items for use in stopping rules.
     normb = β
     istop = 0 
     normr = β
     normAr = α * β
-    tests = Tuple{Tr, Tr, Tr}[]
     iter = 0
     # Exit if b = 0 or A'b = 0.
     if normAr != 0 
@@ -201,8 +198,6 @@ function lsmr!(x, A, b, v, h, hbar;
             test1 = normr / normb
             test2 = normAr / (normA * normr)
             test3 = inv(condA)
-            push!(tests, (test1, test2, test3))
-
             t1 = test1 / (one(Tr) + normA * normx / normb)
             rtol = btol + atol * normA * normx / normb      
             # The following tests guard against extremely small values of
@@ -222,7 +217,7 @@ function lsmr!(x, A, b, v, h, hbar;
     end
     converged = istop ∉ (3, 6, 7)
     tol = (atol, btol, ctol)
-    ch = ConvergenceHistory(converged, tol, iter, tests)
+    ch = ConvergenceHistory(converged, tol, iter, nothing)
     return x, ch
 end
 
