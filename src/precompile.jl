@@ -6,6 +6,7 @@
     @compile_workload begin
         solve_residuals!(copy(x), fes)
         solve_residuals!(copy(x), fes, Weights(ones(10)))
+        solve_residuals!([copy(x), copy(x)], fes)
         solve_coefficients!(copy(x), fes)
     end
 end
