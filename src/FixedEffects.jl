@@ -8,6 +8,7 @@ module FixedEffects
 
 using Base: @propagate_inbounds
 using LinearAlgebra: LinearAlgebra, Adjoint, mul!, rmul!, norm, axpy!
+using PrecompileTools: @setup_workload, @compile_workload
 using StatsBase: AbstractWeights, UnitWeights, Weights, uweights
 using GroupedArrays: GroupedArray, @spawn_for_chunks
 using Printf: @printf
@@ -30,7 +31,6 @@ include("SolverCPU.jl")
 
 
 include("precompile.jl")
-_precompile_()
 
 ##############################################################################
 ##

@@ -13,7 +13,7 @@ abstract type AbstractFixedEffectSolver{T} end
 Returns ``y_i - X_i'\\beta`` where ``\\beta = argmin_{b} \\sum_i y_i - X_i'b``, where `X` denotes the matrix of fixed effects `fes`.
 
 ### Arguments
-* `y` : A `AbstractVector` or A `AbstractMatrix`
+* `y` : A `AbstractVector`
 * `fes`: A `Vector{<:FixedEffect}`
 * `w`: A vector of weights, i.e. `AbstractWeights`
 * `method` : A symbol between :cpu (default), :CUDA, or :Metal
@@ -34,14 +34,13 @@ p2 = repeat(1:5, outer = 2)
 solve_residuals!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
-function solve_residuals!(y::Union{AbstractVector{<: Real}, AbstractMatrix{<: Real}}, fes::AbstractVector{<: FixedEffect}, w::AbstractWeights = uweights(eltype(y), size(y, 1)); 
-	method::Symbol = :cpu, 
-	double_precision::Bool = method == :cpu, 
-	tol::Real = double_precision ? 1e-8 : 1e-6, 
-	maxiter::Integer = 10000,
-	nthreads = nothing)
-	any((length(fe) != size(y, 1) for fe in fes)) && throw("FixedEffects must have the same length as y")
-	any(ismissing.(fes)) && throw("FixedEffects must not have missing values")
+function solve_residuals!(y::AbstractVector{<: Real}, fes::AbstractVector{<: FixedEffect}, w::AbstractWeights = uweights(eltype(y), length(y));
+	method::Symbol = :cpu,
+	double_precision::Bool = method == :cpu,
+	tol::Real = double_precision ? 1e-8 : 1e-6,
+	maxiter::Integer = 10000)
+	any((length(fe) != size(y, 1) for fe in fes)) && error("FixedEffects must have the same length as y")
+	any(ismissing.(fes)) && error("FixedEffects must not have missing values")
 	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method})
 	solve_residuals!(y, feM; maxiter = maxiter, tol = tol)
 end
@@ -98,18 +97,13 @@ function solve_residuals!(xs, feM::AbstractFixedEffectSolver; progress_bar = tru
     return xs, iterations, convergeds
 end
 
-# to depreciate
-function solve_residuals!(X::AbstractMatrix, feM::AbstractFixedEffectSolver; kwargs...)
-	xs, iterations, convergeds = solve_residuals!(eachcol(X), feM; kwargs...)
-	return X, iterations, convergeds
-end
 
 
 
 """
 Solve a least square problem for a set of FixedEffects
 
-`solve_coefficients!(y, fes, w; method = :cpu, double_precision = method = :cpu, tol = 1e-8, maxiter = 10000)`
+`solve_coefficients!(y, fes, w; method = :cpu, double_precision = method == :cpu, tol = 1e-8, maxiter = 10000)`
 
 Returns ``\\beta = argmin_{b} \\sum_i w_i(y_i - X_i'b)`` where `X` denotes the matrix of fixed effects `fes`.
 
@@ -118,7 +112,7 @@ Returns ``\\beta = argmin_{b} \\sum_i w_i(y_i - X_i'b)`` where `X` denotes the m
 * `fes`: A `Vector{<:FixedEffect}`
 * `w`: A vector of weights, i.e. `AbstractWeights`
 * `method` : A symbol between :cpu (default), :CUDA, or :Metal
-* `double_precision::Bool`: Should the demeaning operation use Float64 rather than Float32? Default to method = :cpu.
+* `double_precision::Bool`: Should the demeaning operation use Float64 rather than Float32? Default to method == :cpu.
 * `tol` : Tolerance. Default to 1e-8 if `double_precision = true`, 1e-6 otherwise.
 * `maxiter` : Maximum number of iterations
 
@@ -141,19 +135,18 @@ x = rand(10)
 solve_coefficients!(rand(10), [FixedEffect(p1), FixedEffect(p2)])
 ```
 """
-function solve_coefficients!(y::AbstractVector{<: Number}, fes::AbstractVector{<: FixedEffect}, w::AbstractWeights = uweights(eltype(y), length(y)); 
-		method::Symbol = :cpu, 
-		double_precision::Bool = method == :cpu, 
-		tol::Real = double_precision ? 1e-8 : 1e-6,  
-		maxiter::Integer = 10000, 
-		nthreads = nothing)
-	any(ismissing.(fes)) && throw("Some FixedEffect has a missing value for reference or interaction")
-	any((length(fe) != length(y) for fe in fes))  && throw("FixedEffects must have the same length as y")
+function solve_coefficients!(y::AbstractVector{<: Number}, fes::AbstractVector{<: FixedEffect}, w::AbstractWeights = uweights(eltype(y), length(y));
+		method::Symbol = :cpu,
+		double_precision::Bool = method == :cpu,
+		tol::Real = double_precision ? 1e-8 : 1e-6,
+		maxiter::Integer = 10000)
+	any(ismissing.(fes)) && error("Some FixedEffect has a missing value for reference or interaction")
+	any((length(fe) != length(y) for fe in fes))  && error("FixedEffects must have the same length as y")
 	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method})
 	solve_coefficients!(y, feM; maxiter = maxiter, tol = tol)
 end
 
-function FixedEffects.solve_coefficients!(r::AbstractVector, feM::AbstractFixedEffectSolver{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
+function solve_coefficients!(r::AbstractVector, feM::AbstractFixedEffectSolver{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	# One cannot copy view of Vector (r) on GPU, so first collect the vector
 	copy_internal!(feM, :b, r)
 	if !(feM.weights isa UnitWeights)
@@ -165,5 +158,5 @@ function FixedEffects.solve_coefficients!(r::AbstractVector, feM::AbstractFixedE
 		x .*=  scale
 	end
 	x = Vector{eltype(r)}[collect(x) for x in feM.x.x]
-	full(normalize!(x, feM.m.fes; tol = tol, maxiter = maxiter), feM.m.fes), div(ch.mvps, 2), ch.isconverged
+	full(normalize!(x, feM.m.fes), feM.m.fes), div(ch.mvps, 2), ch.isconverged
 end
