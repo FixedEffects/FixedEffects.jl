@@ -40,7 +40,6 @@ function solve_residuals!(y::AbstractVector{<: Real}, fes::AbstractVector{<: Fix
 	tol::Real = double_precision ? 1e-8 : 1e-6,
 	maxiter::Integer = 10000)
 	any((length(fe) != size(y, 1) for fe in fes)) && error("FixedEffects must have the same length as y")
-	any(ismissing.(fes)) && error("FixedEffects must not have missing values")
 	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method})
 	solve_residuals!(y, feM; maxiter = maxiter, tol = tol)
 end
@@ -140,7 +139,6 @@ function solve_coefficients!(y::AbstractVector{<: Number}, fes::AbstractVector{<
 		double_precision::Bool = method == :cpu,
 		tol::Real = double_precision ? 1e-8 : 1e-6,
 		maxiter::Integer = 10000)
-	any(ismissing.(fes)) && error("Some FixedEffect has a missing value for reference or interaction")
 	any((length(fe) != length(y) for fe in fes))  && error("FixedEffects must have the same length as y")
 	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method})
 	solve_coefficients!(y, feM; maxiter = maxiter, tol = tol)

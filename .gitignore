@@ -2,4 +2,5 @@
 ..DS_Store
 .DS_Store
 Manifest.toml
+benchmark/tune.json
 settings.local.json
