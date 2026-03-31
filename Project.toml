@@ -1,32 +1,31 @@
 name = "FixedEffects"
 uuid = "c8885935-8500-56a7-9867-7708b20db0eb"
-version = "3.0.0"
-
+version = "3.1.0"
 
 [deps]
+GroupedArrays = "6407cd72-fade-4a84-8a1e-56e431fc1533"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
-GroupedArrays = "6407cd72-fade-4a84-8a1e-56e431fc1533"
-
-[compat]
-PrecompileTools = "1"
-StatsBase = "0.33, 0.34"
-GroupedArrays = "0.3"
-julia = "1.10"
-
-[extensions]
-CUDAExt = "CUDA"
-MetalExt = "Metal"
 
 [weakdeps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 Metal = "dde4c033-4e86-420c-a63e-0dd931031962"
 
+[extensions]
+CUDAExt = "CUDA"
+MetalExt = "Metal"
+
+[compat]
+GroupedArrays = "0.3"
+PrecompileTools = "1"
+StatsBase = "0.33, 0.34"
+julia = "1.10"
+
 [extras]
-CategoricalArrays = "324d7699-5711-5eae-9e2f-1d82baa6b597"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+CategoricalArrays = "324d7699-5711-5eae-9e2f-1d82baa6b597"
 Metal = "dde4c033-4e86-420c-a63e-0dd931031962"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 PooledArrays = "2dfb63ee-cc39-5dd5-95bd-886bf059d720"
@@ -34,4 +33,3 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
 test = ["CategoricalArrays", "CUDA", "Metal", "Pkg", "PooledArrays", "Test"]
-
