@@ -15,6 +15,18 @@ r_ols =  [-0.2015993617092453,  0.2015993617092464, -0.2015993617092463,  0.2015
 (r, iter, conv) = solve_residuals!(deepcopy(x), fes)
 @test r ≈ r_ols
 
+@testset "maxiter semantics" begin
+	(r0, iter0, conv0) = @test_logs (:warn, r"solve_residuals!") solve_residuals!(deepcopy(x), fes; maxiter = 0)
+	@test iter0 == 0
+	@test !conv0
+	(r1, iter1, conv1) = @test_logs (:warn, r"solve_residuals!") solve_residuals!(deepcopy(x), fes; maxiter = 1)
+	@test iter1 == 1
+	(coefs1, coef_iter1, coef_conv1) = @test_logs (:warn, r"solve_coefficients!") solve_coefficients!(deepcopy(x), fes; maxiter = 1)
+	@test coef_iter1 == 1
+	@test_throws ArgumentError solve_residuals!(deepcopy(x), fes; maxiter = -1)
+	@test_throws ArgumentError solve_coefficients!(deepcopy(x), fes; maxiter = -1)
+end
+
 # PooledArrays
 (r, iter, conv) = solve_residuals!(deepcopy(x), [FixedEffect(PooledArray(p1)), FixedEffect(PooledArray(p2))])
 @test r ≈ r_ols
@@ -35,6 +47,55 @@ for method in method_s
 	println("$method Float32")
 	local (r, iter, conv) = solve_residuals!(deepcopy(x), fes, method=method, double_precision = false)
 	@test Float32.(r) ≈ Float32.(r_ols)
+end
+
+function _residual_from_coefs(y, coefs)
+	out = copy(y)
+	for coef in coefs
+		out .-= coef
+	end
+	return out
+end
+
+@testset "GPU parity" begin
+	n_gpu = 2048
+	p1_gpu = mod1.(1:n_gpu, 32)
+	p2_gpu = mod1.((1:n_gpu) .* 7, 41)
+	x_gpu = sin.((1:n_gpu) ./ 3) .+ cos.((1:n_gpu) ./ 11)
+	weights_gpu = Weights(1 .+ mod.(1:n_gpu, 5) ./ 10)
+	interaction_gpu = 0.5 .+ mod.(1:n_gpu, 11) ./ 13
+	fes_gpu = [FixedEffect(p1_gpu), FixedEffect(p2_gpu)]
+	fes_interact_gpu = [FixedEffect(p1_gpu, interaction = interaction_gpu), FixedEffect(p2_gpu)]
+	fes_bin_gpu = [FixedEffect(p1_gpu)]
+	atol_gpu = 1e-3
+	rtol_gpu = 1e-3
+
+	for method in filter(!=(:cpu), method_s)
+		cpu_r = solve_residuals!(deepcopy(x_gpu), fes_gpu; double_precision = false)[1]
+		gpu_r = solve_residuals!(deepcopy(x_gpu), fes_gpu; method = method, double_precision = false)[1]
+		@test gpu_r ≈ cpu_r atol=atol_gpu rtol=rtol_gpu
+
+		cpu_weighted_r = solve_residuals!(deepcopy(x_gpu), fes_gpu, weights_gpu; double_precision = false)[1]
+		gpu_weighted_r = solve_residuals!(deepcopy(x_gpu), fes_gpu, weights_gpu; method = method, double_precision = false)[1]
+		@test gpu_weighted_r ≈ cpu_weighted_r atol=atol_gpu rtol=rtol_gpu
+
+		cpu_interact_r = solve_residuals!(deepcopy(x_gpu), fes_interact_gpu, weights_gpu; double_precision = false)[1]
+		gpu_interact_r = solve_residuals!(deepcopy(x_gpu), fes_interact_gpu, weights_gpu; method = method, double_precision = false)[1]
+		@test gpu_interact_r ≈ cpu_interact_r atol=atol_gpu rtol=rtol_gpu
+
+		cpu_coefs = solve_coefficients!(deepcopy(x_gpu), fes_gpu, weights_gpu; double_precision = false)[1]
+		gpu_coefs = solve_coefficients!(deepcopy(x_gpu), fes_gpu, weights_gpu; method = method, double_precision = false)[1]
+		@test _residual_from_coefs(x_gpu, gpu_coefs) ≈ _residual_from_coefs(x_gpu, cpu_coefs) atol=atol_gpu rtol=rtol_gpu
+
+		cpu_bin_r = solve_residuals!(deepcopy(x_gpu), fes_bin_gpu, weights_gpu; double_precision = false)[1]
+		gpu_bin_r = solve_residuals!(deepcopy(x_gpu), fes_bin_gpu, weights_gpu; method = method, double_precision = false)[1]
+		@test gpu_bin_r ≈ cpu_bin_r atol=atol_gpu rtol=rtol_gpu
+	end
+
+	if Metal.functional()
+		@test_throws ArgumentError solve_residuals!(deepcopy(x), fes; method = :Metal, double_precision = true)
+		@test_throws ArgumentError solve_coefficients!(deepcopy(x), fes; method = :Metal, double_precision = true)
+	end
 end
 
 

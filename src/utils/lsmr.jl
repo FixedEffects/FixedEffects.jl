@@ -48,6 +48,7 @@ function lsmr!(x, A, b, v, h, hbar;
     maxiter::Integer = max(size(A,1), size(A,2)), λ::Number = 0)
 
     # Sanity-checking
+    maxiter >= 0 || throw(ArgumentError("maxiter must be non-negative"))
     m = size(A, 1)
     n = size(A, 2)
     length(x) == n || error("x has length $(length(x)) but should have length $n")
@@ -205,7 +206,6 @@ function lsmr!(x, A, b, v, h, hbar;
             # the parameters atol, btol, conlim  to 0.)
             # The effect is equivalent to the normAl tests using
             # atol = eps,  btol = eps,  conlim = 1/eps.
-            if iter >= maxiter istop = 7; break end
             if 1 + test3 <= 1 istop = 6; break end
             if 1 + test2 <= 1 istop = 5; break end
             if 1 + t1 <= 1 istop = 4; break end
@@ -213,12 +213,13 @@ function lsmr!(x, A, b, v, h, hbar;
             if test3 <= ctol istop = 3; break end
             if test2 <= atol istop = 2; break end
             if test1 <= rtol  istop = 1; break end
+            if iter >= maxiter istop = 7; break end
         end
+        istop == 0 && (istop = 7)
     end
     converged = istop ∉ (3, 6, 7)
     tol = (atol, btol, ctol)
     ch = ConvergenceHistory(converged, tol, iter, nothing)
     return x, ch
 end
-
 
