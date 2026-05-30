@@ -1,6 +1,6 @@
 module CUDAExt
 using FixedEffects, CUDA
-using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!,  lsmr!, AbstractFixedEffectLinearMap, copy_internal!
+using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!,  lsmr!, AbstractFixedEffectLinearMap, copy_internal!, AtomicGather
 CUDA.allowscalar(false)
 
 ##############################################################################
@@ -36,19 +36,21 @@ mutable struct FixedEffectLinearMapCUDA{T} <: AbstractFixedEffectLinearMap{T}
 	fes::Vector{<:FixedEffect}
 	scales::Vector{<:AbstractVector}
 	caches::Vector{<:AbstractVector}
+	gathers::Vector{AtomicGather}
 end
 
 function FixedEffectLinearMapCUDA{T}(fes::Vector{<:FixedEffect}) where {T}
 	fes = [_cu(T, fe) for fe in fes]
 	scales = [CUDA.zeros(T, fe.n) for fe in fes]
 	caches = [CUDA.zeros(T, length(fes[1].interaction)) for fe in fes]
-	return FixedEffectLinearMapCUDA{T}(fes, scales, caches)
+	gathers = [AtomicGather() for fe in fes]
+	return FixedEffectLinearMapCUDA{T}(fes, scales, caches, gathers)
 end
 
-function FixedEffects.gather!(fecoef::CuVector, refs::CuVector, α::Number, y::CuVector, cache::CuVector)
+function FixedEffects.gather!(fecoef::CuVector, refs::CuVector, α::Number, y::CuVector, cache::CuVector, ::AtomicGather)
 	nthreads = 256
-	nblocks = cld(length(y), nthreads) 
-	@cuda threads=nthreads blocks=nblocks gather_kernel!(fecoef, refs, α, y, cache)    
+	nblocks = cld(length(y), nthreads)
+	@cuda threads=nthreads blocks=nblocks gather_kernel!(fecoef, refs, α, y, cache)
 end
 
 function gather_kernel!(fecoef, refs, α, y, cache)

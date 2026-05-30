@@ -4,16 +4,6 @@
 ##
 ##############################################################################
 
-# Strategy for the adjoint gather (A'u) of one fixed effect, picked once at construction
-# and dispatched on by `gather!` below: a serial scatter-add, or a threaded reduction
-# through per-thread accumulators.
-struct SerialGather end
-
-struct ThreadedGather{V<:AbstractVector}
-	buffers::Vector{V}              # one length-fe.n accumulator per thread
-	ranges::Vector{UnitRange{Int}}  # contiguous row chunks (shared across fixed effects)
-end
-
 mutable struct FixedEffectLinearMapCPU{T} <: AbstractFixedEffectLinearMap{T}
 	fes::Vector{<:FixedEffect}
 	scales::Vector{<:AbstractVector}
@@ -100,19 +90,6 @@ function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector,
 	@spawn_for_chunks 100_000 for i in eachindex(y)
 		@inbounds y[i] += α * fecoef[refs[i]] * cache[i]
 	end
-end
-
-# CPU adjoint (A'u). Overrides the generic AbstractFixedEffectLinearMap method to use each
-# fixed effect's gather strategy (chosen at construction). GPU backends keep the generic one.
-function LinearAlgebra.mul!(fecoefs::FixedEffectCoefficients,
-	Cfem::Adjoint{T, FixedEffectLinearMapCPU{T}},
-	y::AbstractVector, α::Number, β::Number) where {T}
-	fem = adjoint(Cfem)
-	rmul!(fecoefs, β)
-	@inbounds for i in eachindex(fem.fes)
-		gather!(fecoefs.x[i], fem.fes[i].refs, α, y, fem.caches[i], fem.gathers[i])
-	end
-	return fecoefs
 end
 
 
