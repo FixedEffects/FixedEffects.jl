@@ -7,6 +7,7 @@ module FixedEffects
 ##############################################################################
 
 using Base: @propagate_inbounds
+using Base.Threads: @threads, nthreads
 using LinearAlgebra: LinearAlgebra, Adjoint, mul!, rmul!, norm, axpy!
 using PrecompileTools: @setup_workload, @compile_workload
 using StatsBase: AbstractWeights, UnitWeights, Weights, uweights

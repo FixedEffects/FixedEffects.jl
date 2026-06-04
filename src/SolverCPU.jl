@@ -1,5 +1,5 @@
 ##############################################################################
-## 
+##
 ## Implement AbstractFixedEffectLinearMap
 ##
 ##############################################################################
@@ -8,25 +8,84 @@ mutable struct FixedEffectLinearMapCPU{T} <: AbstractFixedEffectLinearMap{T}
 	fes::Vector{<:FixedEffect}
 	scales::Vector{<:AbstractVector}
 	caches::Vector{<:AbstractVector}
+	gathers::Vector{Union{SerialGather, ThreadedGather{Vector{T}}}}
+end
+
+# Toggle to force the serial baseline (e.g. for benchmarking); threading is on by default.
+const _USE_THREADED_GATHER = Ref(true)
+# Threading the gather pays off only when the nt per-thread accumulators of length fe.n fit
+# in cache; beyond that the fill/merge memory traffic dominates and serial is faster.
+const _GATHER_BUFFER_BUDGET = 8 * 1024 * 1024   # bytes
+const _GATHER_MIN_ROWS = 100_000                # below this, threading overhead isn't worth it
+
+function _row_chunks(n::Int, k::Int)
+	base, rem = divrem(n, k)
+	out = Vector{UnitRange{Int}}(undef, k)
+	s = 1
+	for t in 1:k
+		len = base + (t <= rem ? 1 : 0)
+		out[t] = s:(s + len - 1)
+		s += len
+	end
+	return out
+end
+
+# Per fixed effect, thread the gather only if the accumulators fit in cache and N is large.
+function _gather_strategy(::Type{T}, fe::FixedEffect, N::Int, nt::Int,
+		ranges::Vector{UnitRange{Int}}) where {T}
+	if _USE_THREADED_GATHER[] && nt > 1 && N >= _GATHER_MIN_ROWS &&
+			nt * fe.n * sizeof(T) <= _GATHER_BUFFER_BUDGET
+		return ThreadedGather([zeros(T, fe.n) for _ in 1:nt], ranges)
+	else
+		return SerialGather()
+	end
 end
 
 function FixedEffectLinearMapCPU{T}(fes::Vector{<:FixedEffect}) where {T}
 	scales = [zeros(T, fe.n) for fe in fes]
 	caches = [zeros(T, length(fes[1].interaction)) for fe in fes]
-	return FixedEffectLinearMapCPU{T}(fes, scales, caches)
+	N = length(fes[1].refs)
+	nt = nthreads()
+	ranges = _row_chunks(N, nt)
+	G = Union{SerialGather, ThreadedGather{Vector{T}}}
+	gathers = G[_gather_strategy(T, fe, N, nt, ranges) for fe in fes]
+	return FixedEffectLinearMapCPU{T}(fes, scales, caches, gathers)
 end
 
 
-# multithreaded gather seems to be slower
-function gather!(fecoef::AbstractVector, refs::AbstractVector, α::Number, 
-	y::AbstractVector, cache::AbstractVector)
-	# no @simd: multiple i may write to the same fecoef[refs[i]]
-	@fastmath @inbounds for i in eachindex(y)
-		fecoef[refs[i]] += α * y[i] * cache[i]
+# The one place the gather arithmetic lives: scatter-add a row range into `out`,
+# out[refs[i]] += α * y[i] * cache[i]. No @simd: distinct i may write the same out[refs[i]].
+function _gather!(out::AbstractVector, refs::AbstractVector, α::Number,
+	y::AbstractVector, cache::AbstractVector, range)
+	@fastmath @inbounds for i in range
+		out[refs[i]] += α * y[i] * cache[i]
 	end
+	return out
 end
 
-function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector, 
+# Serial: one pass over all rows straight into fecoef (which already holds β * old).
+gather!(fecoef::AbstractVector, refs::AbstractVector, α::Number,
+	y::AbstractVector, cache::AbstractVector, ::SerialGather) =
+	_gather!(fecoef, refs, α, y, cache, eachindex(y))
+
+# Threaded: each thread reduces its row chunk into a private (cache-resident) buffer,
+# then the buffers are summed into fecoef.
+function gather!(fecoef::AbstractVector, refs::AbstractVector, α::Number,
+	y::AbstractVector, cache::AbstractVector, g::ThreadedGather)
+	@threads for t in eachindex(g.buffers)
+		buf = g.buffers[t]
+		fill!(buf, zero(eltype(buf)))
+		_gather!(buf, refs, α, y, cache, g.ranges[t])
+	end
+	@inbounds for buf in g.buffers
+		@simd for k in eachindex(fecoef)
+			fecoef[k] += buf[k]
+		end
+	end
+	return fecoef
+end
+
+function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector,
 	refs::AbstractVector, cache::AbstractVector)
 	@spawn_for_chunks 100_000 for i in eachindex(y)
 		@inbounds y[i] += α * fecoef[refs[i]] * cache[i]

@@ -1,6 +1,6 @@
 module MetalExt
 using FixedEffects, Metal
-using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!, lsmr!, AbstractFixedEffectLinearMap, copy_internal!
+using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!, lsmr!, AbstractFixedEffectLinearMap, copy_internal!, AtomicGather, BucketGather
 Metal.allowscalar(false)
 
 ##############################################################################
@@ -33,71 +33,80 @@ _mtl(T::Type, w::AbstractVector) = MtlVector{T}(convert(Vector{T}, w))
 
 mutable struct FixedEffectLinearMapMetal{T} <: AbstractFixedEffectLinearMap{T}
 	fes::Vector{<:FixedEffect}
-	scales::Vector{<:AbstractVector}
-	caches::Vector
+	scales::Vector{MtlVector{T}}
+	caches::Vector{MtlVector{T}}
+	gathers::Vector{Union{AtomicGather, BucketGather}}
 end
 
-function bucketize_refs(refs::Vector, n::Int)
-	# count the number of obs per group
-  counts = zeros(Int, n)
-  @inbounds for r in refs
-    counts[r] += 1
-  end
-	# offsets is vcat(1, cumsum(counts))
-    offsets_mtl = Metal.@sync Metal.zeros(Int, n + 1; storage = Metal.SharedStorage)
-    offsets = unsafe_wrap(Array{Int}, offsets_mtl, size(offsets_mtl))
-    offsets[1] = 1
-    @inbounds for k in 1:n
-        offsets[k+1] = offsets[k] + counts[k]
-    end
+function _metal_threadgroup_width()
+	width = Int(device().maxThreadsPerThreadgroup.width)
+	return prevpow(2, width)
+end
 
-    perm_mtl = Metal.@sync Metal.zeros(Int, length(refs); storage = Metal.SharedStorage)
-    perm = unsafe_wrap(Array{Int}, perm_mtl, size(perm_mtl))
-    next = offsets[1:n]
-    @inbounds for i in eachindex(refs)
-        r = refs[i]
-        p = next[r]
-        perm[p] = i
-        next[r] = p + 1
-    end
-    return perm_mtl, offsets_mtl
+function bucketize_refs(refs::AbstractVector{<:Integer}, n::Int)
+	# count the number of obs per group
+	counts = zeros(Int, n)
+	@inbounds for r in refs
+		counts[r] += 1
+	end
+	# offsets is vcat(1, cumsum(counts))
+	offsets = Vector{Int}(undef, n + 1)
+	offsets[1] = 1
+	@inbounds for k in 1:n
+		offsets[k+1] = offsets[k] + counts[k]
+	end
+
+	perm = Vector{Int}(undef, length(refs))
+	next = offsets[1:n]
+	@inbounds for i in eachindex(refs)
+		r = refs[i]
+		p = next[r]
+		perm[p] = i
+		next[r] = p + 1
+	end
+	return MtlVector{Int}(perm), MtlVector{Int}(offsets)
 end
 
 function FixedEffectLinearMapMetal{T}(fes::Vector{<:FixedEffect}) where {T}
 	fes2 = [_mtl(T, fe) for fe in fes]
 	scales = [Metal.zeros(T, fe.n) for fe in fes]
-	caches = [Any[Metal.zeros(T, length(fe.refs)), Metal.zeros(Int, 1), Metal.zeros(Int, 1)] for fe in fes]
+	caches = [Metal.zeros(T, length(fe.refs)) for fe in fes]
+	G = Union{AtomicGather, BucketGather}
+	gathers = Vector{G}(undef, length(fes))
 	Threads.@threads for i in 1:length(fes)
 		refs = fes[i].refs
 		n = fes[i].n
-		if n < min(100_000,  div(length(refs), 16))	
-			out = bucketize_refs(refs, n)
-			caches[i][2] = out[1]
-			caches[i][3] = out[2]
+		# bucketize (one threadgroup per group) for low cardinality; else atomic adds
+		if n < min(100_000, div(length(refs), 16))
+			perm, offsets = bucketize_refs(refs, n)
+			gathers[i] = BucketGather(perm, offsets)
+		else
+			gathers[i] = AtomicGather()
 		end
 	end
-	return FixedEffectLinearMapMetal{T}(fes2, scales, caches)
+	return FixedEffectLinearMapMetal{T}(fes2, scales, caches, gathers)
 end
 
-function FixedEffects.gather!(fecoef::MtlVector, refs::MtlVector, α::Number, y::MtlVector, cache::Vector)
+function FixedEffects.gather!(fecoef::MtlVector, refs::MtlVector, α::Number, y::MtlVector, cache::MtlVector, g::BucketGather)
 	n = length(fecoef)
-	nthreads = Int(device().maxThreadsPerThreadgroup.width)
-	if n < min(100_000,  div(length(refs), 16))
-		Metal.@sync @metal threads=nthreads groups=n gather_kernel_bin!(fecoef, refs, α, y, cache[1], cache[2], cache[3], Val(nthreads))
-	else
-		nblocks = cld(length(y), nthreads)
-		Metal.@sync @metal threads=nthreads groups=nblocks gather_kernel!(fecoef, refs, α, y, cache[1])
-	end
+	nthreads = _metal_threadgroup_width()
+	Metal.@sync @metal threads=nthreads groups=n gather_kernel_bin!(fecoef, refs, α, y, cache, g.perm, g.offsets, Val(nthreads))
+end
+
+function FixedEffects.gather!(fecoef::MtlVector, refs::MtlVector, α::Number, y::MtlVector, cache::MtlVector, ::AtomicGather)
+	nthreads = _metal_threadgroup_width()
+	nblocks = cld(length(y), nthreads)
+	Metal.@sync @metal threads=nthreads groups=nblocks gather_kernel!(fecoef, refs, α, y, cache)
 end
 
 function gather_kernel_bin!(fecoef, refs, α, y, cache, perm, offsets, ::Val{NT}) where {NT}
-    k   = Int(threadgroup_position_in_grid().x)          # 1..K (Julia-style indexing) :contentReference[oaicite:2]{index=2}
-    tid = Int(thread_position_in_threadgroup().x)        # 1..nthreads :contentReference[oaicite:3]{index=3}
-    nt  = Int(threads_per_threadgroup().x)               # nthreads :contentReference[oaicite:4]{index=4}
+    k   = Int(threadgroup_position_in_grid().x)
+    tid = Int(thread_position_in_threadgroup().x)
+    nt  = Int(threads_per_threadgroup().x)
 
     # threadgroup scratch
     T = eltype(fecoef)
-    shared = Metal.MtlThreadGroupArray(T, NT)  # threadgroup-local array :contentReference[oaicite:5]{index=5}
+    shared = Metal.MtlThreadGroupArray(T, NT)
 
     start = @inbounds offsets[k]
     stop  = @inbounds offsets[k+1] - 1
@@ -113,7 +122,7 @@ function gather_kernel_bin!(fecoef, refs, α, y, cache, perm, offsets, ::Val{NT}
     end
 
     @inbounds shared[tid] = acc
-    Metal.threadgroup_barrier(Metal.MemoryFlagThreadGroup)  # sync + tg fence :contentReference[oaicite:6]{index=6}
+    Metal.threadgroup_barrier(Metal.MemoryFlagThreadGroup)
 
     # tree reduction in shared memory
     offset = nt ÷ 2
@@ -141,10 +150,10 @@ function gather_kernel!(fecoef, refs, α, y, cache)
 	return nothing
 end
 
-function FixedEffects.scatter!(y::MtlVector, α::Number, fecoef::MtlVector, refs::MtlVector, cache::Vector)
-	nthreads = Int(device().maxThreadsPerThreadgroup.width)
+function FixedEffects.scatter!(y::MtlVector, α::Number, fecoef::MtlVector, refs::MtlVector, cache::MtlVector)
+	nthreads = _metal_threadgroup_width()
 	nblocks = cld(length(y), nthreads)
-	Metal.@sync @metal threads=nthreads groups=nblocks scatter_kernel!(y, α, fecoef, refs, cache[1])
+	Metal.@sync @metal threads=nthreads groups=nblocks scatter_kernel!(y, α, fecoef, refs, cache)
 end
 
 function scatter_kernel!(y, α, fecoef, refs, cache)
@@ -172,19 +181,22 @@ mutable struct FixedEffectSolverMetal{T} <: FixedEffects.AbstractFixedEffectSolv
 	v::FixedEffectCoefficients{<: AbstractVector{T}}
 	h::FixedEffectCoefficients{<: AbstractVector{T}}
 	hbar::FixedEffectCoefficients{<: AbstractVector{T}}
+	tmp::Vector{T}
 	fes::Vector{<:FixedEffect}
 end
 
 	
 function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:Metal}}) where {T}
+	T === Float32 || throw(ArgumentError("The Metal backend supports Float32 solves only; pass double_precision=false or use method=:cpu for Float64."))
 	m = FixedEffectLinearMapMetal{T}(fes)
-	b = Metal.zeros(T, length(weights); storage = Metal.SharedStorage)
-	r = Metal.zeros(T, length(weights); storage = Metal.SharedStorage)
+	b = Metal.zeros(T, length(weights))
+	r = Metal.zeros(T, length(weights))
 	x = FixedEffectCoefficients([Metal.zeros(T, fe.n) for fe in fes])
 	v = FixedEffectCoefficients([Metal.zeros(T, fe.n) for fe in fes])
 	h = FixedEffectCoefficients([Metal.zeros(T, fe.n) for fe in fes])
 	hbar = FixedEffectCoefficients([Metal.zeros(T, fe.n) for fe in fes])
-	feM = FixedEffectSolverMetal{T}(m, Metal.zeros(T, length(weights)), b, r, x, v, h, hbar, fes)
+	tmp = zeros(T, length(weights))
+	feM = FixedEffectSolverMetal{T}(m, Metal.zeros(T, length(weights)), b, r, x, v, h, hbar, tmp, fes)
 	FixedEffects.update_weights!(feM, weights)
 end
 
@@ -201,7 +213,7 @@ function FixedEffects.update_weights!(feM::FixedEffectSolverMetal{T}, weights::A
 end
 
 function scale!(scale::MtlVector, refs::MtlVector, interaction::MtlVector, weights::MtlVector)
-	nthreads = Int(device().maxThreadsPerThreadgroup.width)
+	nthreads = _metal_threadgroup_width()
 	nblocks = cld(length(refs), nthreads) 
     fill!(scale, 0)
 	Metal.@sync @metal threads=nthreads groups=nblocks scale_kernel!(scale, refs, interaction, weights)
@@ -224,10 +236,10 @@ function inv_kernel!(scale, T)
 	return nothing
 end
 
-function cache!(cache, refs::MtlVector, interaction::MtlVector, weights::MtlVector, scale::MtlVector)
-	nthreads = Int(device().maxThreadsPerThreadgroup.width)
-	nblocks = cld(length(cache[1]), nthreads) 
-	Metal.@sync @metal threads=nthreads groups=nblocks cache!_kernel!(cache[1], refs, interaction, weights, scale)
+function cache!(cache::MtlVector, refs::MtlVector, interaction::MtlVector, weights::MtlVector, scale::MtlVector)
+	nthreads = _metal_threadgroup_width()
+	nblocks = cld(length(cache), nthreads)
+	Metal.@sync @metal threads=nthreads groups=nblocks cache!_kernel!(cache, refs, interaction, weights, scale)
 end
 
 function cache!_kernel!(cache, refs, interaction, weights, scale)
@@ -240,14 +252,14 @@ end
 
 function FixedEffects.copy_internal!(feM::FixedEffectSolverMetal{T}, field::Symbol, r::AbstractVector) where {T}
 	synchronize()
-	feM_r = unsafe_wrap(Array{T}, getfield(feM, field), size(getfield(feM, field)))
-	copyto!(feM_r, r)
+	copyto!(feM.tmp, r)
+	copyto!(getfield(feM, field), feM.tmp)
 end
 
 function FixedEffects.copy_internal!(r::AbstractVector, feM::FixedEffectSolverMetal{T}, field::Symbol) where {T}
 	synchronize()
-	feM_r = unsafe_wrap(Array{T}, getfield(feM, field), size(getfield(feM, field)))
-	copyto!(r, feM_r)
+	copyto!(feM.tmp, getfield(feM, field))
+	copyto!(r, feM.tmp)
 end
 
 

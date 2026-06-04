@@ -17,9 +17,9 @@ Returns ``y_i - X_i'\\beta`` where ``\\beta = argmin_{b} \\sum_i y_i - X_i'b``, 
 * `fes`: A `Vector{<:FixedEffect}`
 * `w`: A vector of weights, i.e. `AbstractWeights`
 * `method` : A symbol between :cpu (default), :CUDA, or :Metal
-* `double_precision::Bool`: Should the demeaning operation use Float64 rather than Float32? Default to method == : cpu.
+* `double_precision::Bool`: Should the demeaning operation use Float64 rather than Float32? Default to method == :cpu. GPU backends use Float32 by default; Float32 solves use a looser default tolerance and can be less accurate than CPU Float64 solves.
 * `tol` : Tolerance. Default to 1e-8 if `double_precision = true`, 1e-6 otherwise.
-* `maxiter` : Maximum number of iterations
+* `maxiter` : Maximum number of LSMR iterations
 
 ### Returns
 * `res` :  Residual of the least square problem
@@ -47,18 +47,22 @@ end
 
 
 function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSolver{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
+	maxiter >= 0 || throw(ArgumentError("maxiter must be non-negative"))
 	# One cannot copy view of Vector (r) on GPU, so first collect the vector
 	copy_internal!(feM, :r, r)
 	if !(feM.weights isa UnitWeights)
 		feM.r .*= sqrt.(feM.weights)
 	end
 	copyto!(feM.b, feM.r)
-	mul!(feM.x, feM.m', feM.b, 1, 0)
-	iter, converged = 1, true
-    if length(feM.x.x) > 1
-        x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter - 1)
-        iter, converged = ch.mvps + 1, ch.isconverged
-    end
+	fill!(feM.x, zero(T))
+	iter, converged = 0, true
+	if length(feM.x.x) == 1
+		mul!(feM.x, feM.m', feM.b, 1, 0)
+	else
+		_, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
+		iter, converged = ch.mvps, ch.isconverged
+	end
+	converged || @warn "solve_residuals! did not converge within maxiter LSMR iterations; returned values may be inaccurate." iterations=iter maxiter tol
 	mul!(feM.r, feM.m, feM.x, -1, 1)
 	if !(feM.weights isa UnitWeights)
 		feM.r ./=  sqrt.(feM.weights)
@@ -111,9 +115,9 @@ Returns ``\\beta = argmin_{b} \\sum_i w_i(y_i - X_i'b)`` where `X` denotes the m
 * `fes`: A `Vector{<:FixedEffect}`
 * `w`: A vector of weights, i.e. `AbstractWeights`
 * `method` : A symbol between :cpu (default), :CUDA, or :Metal
-* `double_precision::Bool`: Should the demeaning operation use Float64 rather than Float32? Default to method == :cpu.
+* `double_precision::Bool`: Should the demeaning operation use Float64 rather than Float32? Default to method == :cpu. GPU backends use Float32 by default; Float32 solves use a looser default tolerance and can be less accurate than CPU Float64 solves.
 * `tol` : Tolerance. Default to 1e-8 if `double_precision = true`, 1e-6 otherwise.
-* `maxiter` : Maximum number of iterations
+* `maxiter` : Maximum number of LSMR iterations
 
 
 ### Returns
@@ -145,16 +149,18 @@ function solve_coefficients!(y::AbstractVector{<: Number}, fes::AbstractVector{<
 end
 
 function solve_coefficients!(r::AbstractVector, feM::AbstractFixedEffectSolver{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
+	maxiter >= 0 || throw(ArgumentError("maxiter must be non-negative"))
 	# One cannot copy view of Vector (r) on GPU, so first collect the vector
 	copy_internal!(feM, :b, r)
 	if !(feM.weights isa UnitWeights)
 		feM.b .*= sqrt.(feM.weights)
 	end
 	fill!(feM.x, zero(T))
-	x, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
+	_, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
+	ch.isconverged || @warn "solve_coefficients! did not converge within maxiter LSMR iterations; returned values may be inaccurate." iterations=ch.mvps maxiter tol
 	for (x, scale) in zip(feM.x.x, feM.m.scales)
 		x .*=  scale
 	end
 	x = Vector{eltype(r)}[collect(x) for x in feM.x.x]
-	full(normalize!(x, feM.m.fes), feM.m.fes), div(ch.mvps, 2), ch.isconverged
+	full(normalize!(x, feM.m.fes), feM.m.fes), ch.mvps, ch.isconverged
 end
