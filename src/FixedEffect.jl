@@ -17,7 +17,13 @@ end
 
 function FixedEffect(args...; interaction::AbstractVector = uweights(length(args[1])))
 	g = GroupedArray(args..., sort = nothing)
-	FixedEffect{typeof(g.groups), typeof(interaction)}(g.groups, interaction, g.ngroups)
+	# Store refs as Int32 (refs lie in [0, ngroups]) to halve the dominant memory stream read by the
+	# scatter/gather kernels on every solver iteration. GroupedArrays always builds Int64 groups (it
+	# needs signed sentinels during construction); narrowing here, where FixedEffect manufactures its
+	# own ref representation, lets every backend (CPU/GPU) and solve_coefficients! stream the smaller
+	# type. The rare ngroups > typemax(Int32) keeps the original integer type.
+	refs = g.ngroups > typemax(Int32) ? g.groups : convert(Vector{Int32}, g.groups)
+	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, g.ngroups)
 end
 
 Base.show(io::IO, ::FixedEffect) = print(io, "Fixed Effects")

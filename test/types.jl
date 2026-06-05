@@ -9,14 +9,14 @@ import Base.==
     @test sprint(show, fe1) == "Fixed Effects"
     @test sprint(show, MIME("text/plain"), fe1) == """
         Fixed Effects:
-          refs (10-element Vector{Int64}):
+          refs (10-element Vector{Int32}):
             [1, 2, 3, 4, 5, ... ]
           interaction (UnitWeights):
             none"""
     fe2 = FixedEffect(1:10, interaction=fill(1.23456789, 10))
     @test sprint(show, MIME("text/plain"), fe2) == """
         Fixed Effects:
-          refs (10-element Vector{Int64}):
+          refs (10-element Vector{Int32}):
             [1, 2, 3, 4, 5, ... ]
           interaction (10-element Vector{Float64}):
             [1.23457, 1.23457, 1.23457, 1.23457, 1.23457, ... ]"""

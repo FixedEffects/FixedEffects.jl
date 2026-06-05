@@ -5,6 +5,23 @@ struct ConvergenceHistory{T, R}
     residuals::R
 end
 
+# Fast 2-norm for the well-scaled length-N CPU vectors in LSMR.
+# `LinearAlgebra.norm` (BLAS nrm2 / generic_norm2) takes an overflow-safe scaled path that is
+# ~8x slower than a plain SIMD sum-of-squares. LSMR's u/v are unit-normalized every iteration
+# and the residual stays O(data), so the overflow guard is unnecessary here. The sum of squares
+# is accumulated in Float64 even for Float32 inputs: this is more accurate than the in-precision
+# BLAS `snrm2` (avoids ~sqrt(N)*eps(Float32) drift over millions of rows) at negligible cost.
+# Restricted to concrete `Vector{<:BlasFloat}` so GPU arrays (CuVector/MtlVector) and
+# FixedEffectCoefficients keep the generic `norm` (the fast path would trigger scalar GPU indexing).
+@inline function _norm2(x::Vector{T}) where {T<:Union{Float32,Float64}}
+    s = 0.0
+    @inbounds @simd for i in eachindex(x)
+        s += abs2(Float64(x[i]))
+    end
+    return T(sqrt(s))
+end
+_norm2(x) = norm(x)
+
 
 
 ##############################################################################
@@ -62,10 +79,10 @@ function lsmr!(x, A, b, v, h, hbar;
     conlim > 0 ? ctol = convert(Tr, inv(conlim)) : ctol = zero(Tr)
     # form the first vectors u and v (satisfy  β*u = b,  α*v = A'u)    
     u = mul!(b, A, x, -1, 1)
-    β = norm(u)    
+    β = _norm2(u)    
     β > 0 && rmul!(u, inv(β))    
     mul!(v, A', u, 1, 0)
-    α = norm(v)
+    α = _norm2(v)
     α > 0 && rmul!(v, inv(α))
     # Initialize variables for 1st iteration.
     ζbar = α * β
@@ -103,11 +120,11 @@ function lsmr!(x, A, b, v, h, hbar;
         while iter < maxiter
             iter += 1
             mul!(u, A, v, 1, -α)
-            β = norm(u)
+            β = _norm2(u)
             if β > 0
                 rmul!(u, inv(β))
                 mul!(v, A', u, 1, -β)
-                α = norm(v)
+                α = _norm2(v)
                 α > 0 && rmul!(v, inv(α))
             end
         
@@ -190,7 +207,7 @@ function lsmr!(x, A, b, v, h, hbar;
         
             # Compute norms for convergence testing.
             normAr  = abs(ζbar)
-            normx = norm(x)
+            normx = _norm2(x)
         
 
 
