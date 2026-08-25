@@ -69,12 +69,44 @@ function FixedEffects.scatter!(y::CuVector, α::Number, fecoef::CuVector, refs::
 	@cuda threads=nthreads blocks=nblocks scatter_kernel!(y, α, fecoef, refs, cache)
 end
 
+function FixedEffects.scatter!(y::CuVector, α::Number, fecoef::CuVector, refs::CuVector, cache::CuVector, β::Number)
+	nthreads = 256
+	nblocks = cld(length(y), nthreads)
+	if iszero(β)
+		@cuda threads=nthreads blocks=nblocks scatter_kernel_zero!(y, α, fecoef, refs, cache)
+	elseif isone(β)
+		@cuda threads=nthreads blocks=nblocks scatter_kernel!(y, α, fecoef, refs, cache)
+	else
+		@cuda threads=nthreads blocks=nblocks scatter_kernel_scaled!(y, α, fecoef, refs, cache, β)
+	end
+end
+
 function scatter_kernel!(y, α, fecoef, refs, cache)
 	index = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
 	i = index
 	@inbounds while i <= length(y)
 		y[i] += α * fecoef[refs[i]] * cache[i]
+		i += stride
+	end
+end
+
+function scatter_kernel_zero!(y, α, fecoef, refs, cache)
+	index = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
+	stride = blockDim().x * gridDim().x
+	i = index
+	@inbounds while i <= length(y)
+		y[i] = α * fecoef[refs[i]] * cache[i]
+		i += stride
+	end
+end
+
+function scatter_kernel_scaled!(y, α, fecoef, refs, cache, β)
+	index = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
+	stride = blockDim().x * gridDim().x
+	i = index
+	@inbounds while i <= length(y)
+		y[i] = β * y[i] + α * fecoef[refs[i]] * cache[i]
 		i += stride
 	end
 end

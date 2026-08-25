@@ -156,10 +156,38 @@ function FixedEffects.scatter!(y::MtlVector, α::Number, fecoef::MtlVector, refs
 	Metal.@sync @metal threads=nthreads groups=nblocks scatter_kernel!(y, α, fecoef, refs, cache)
 end
 
+function FixedEffects.scatter!(y::MtlVector, α::Number, fecoef::MtlVector, refs::MtlVector, cache::MtlVector, β::Number)
+	nthreads = _metal_threadgroup_width()
+	nblocks = cld(length(y), nthreads)
+	if iszero(β)
+		Metal.@sync @metal threads=nthreads groups=nblocks scatter_kernel_zero!(y, α, fecoef, refs, cache)
+	elseif isone(β)
+		Metal.@sync @metal threads=nthreads groups=nblocks scatter_kernel!(y, α, fecoef, refs, cache)
+	else
+		Metal.@sync @metal threads=nthreads groups=nblocks scatter_kernel_scaled!(y, α, fecoef, refs, cache, β)
+	end
+end
+
 function scatter_kernel!(y, α, fecoef, refs, cache)
 	i = thread_position_in_grid_1d()
 	if i <= length(y)
 		@inbounds y[i] += α * fecoef[refs[i]] * cache[i]
+	end
+	return nothing
+end
+
+function scatter_kernel_zero!(y, α, fecoef, refs, cache)
+	i = thread_position_in_grid_1d()
+	if i <= length(y)
+		@inbounds y[i] = α * fecoef[refs[i]] * cache[i]
+	end
+	return nothing
+end
+
+function scatter_kernel_scaled!(y, α, fecoef, refs, cache, β)
+	i = thread_position_in_grid_1d()
+	if i <= length(y)
+		@inbounds y[i] = β * y[i] + α * fecoef[refs[i]] * cache[i]
 	end
 	return nothing
 end
