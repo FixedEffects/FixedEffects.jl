@@ -38,6 +38,12 @@ end
 
 Base.eltype(x::AbstractFixedEffectLinearMap{T}) where {T} = T
 
+function scatter!(y, α, fecoef, refs, cache, β)
+	isone(β) && return scatter!(y, α, fecoef, refs, cache)
+	iszero(β) ? fill!(y, zero(eltype(y))) : rmul!(y, β)
+	scatter!(y, α, fecoef, refs, cache)
+end
+
 function LinearAlgebra.mul!(fecoefs::FixedEffectCoefficients, 
 	Cfem::Adjoint{T, <:AbstractFixedEffectLinearMap{T}},
 	y::AbstractVector, α::Number, β::Number) where {T}
@@ -51,10 +57,15 @@ end
 
 function LinearAlgebra.mul!(y::AbstractVector, fem::AbstractFixedEffectLinearMap, 
 			  fecoefs::FixedEffectCoefficients, α::Number, β::Number)
-	rmul!(y, β)
+	βj = β
+	any_fe = false
 	for (fecoef, fe, cache) in zip(fecoefs.x, fem.fes, fem.caches)
-		scatter!(y, α, fecoef, fe.refs, cache)
+		scatter!(y, α, fecoef, fe.refs, cache, βj)
+		βj = one(βj)
+		any_fe = true
+	end
+	if !any_fe
+		rmul!(y, β)
 	end
 	return y
 end
-

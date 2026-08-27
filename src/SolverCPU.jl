@@ -4,11 +4,11 @@
 ##
 ##############################################################################
 
-mutable struct FixedEffectLinearMapCPU{T} <: AbstractFixedEffectLinearMap{T}
-	fes::Vector{<:FixedEffect}
-	scales::Vector{<:AbstractVector}
-	caches::Vector{<:AbstractVector}
-	gathers::Vector{Union{SerialGather, ThreadedGather{Vector{T}}}}
+mutable struct FixedEffectLinearMapCPU{T,F<:Vector{<:FixedEffect},S<:AbstractVector,C<:AbstractVector,G<:AbstractVector} <: AbstractFixedEffectLinearMap{T}
+	fes::F
+	scales::S
+	caches::C
+	gathers::G
 end
 
 # Toggle to force the serial baseline (e.g. for benchmarking); threading is on by default.
@@ -49,7 +49,7 @@ function FixedEffectLinearMapCPU{T}(fes::Vector{<:FixedEffect}) where {T}
 	ranges = _row_chunks(N, nt)
 	G = Union{SerialGather, ThreadedGather{Vector{T}}}
 	gathers = G[_gather_strategy(T, fe, N, nt, ranges) for fe in fes]
-	return FixedEffectLinearMapCPU{T}(fes, scales, caches, gathers)
+	return FixedEffectLinearMapCPU{T,typeof(fes),typeof(scales),typeof(caches),typeof(gathers)}(fes, scales, caches, gathers)
 end
 
 
@@ -92,6 +92,22 @@ function scatter!(y::AbstractVector, α::Number, fecoef::AbstractVector,
 	end
 end
 
+function scatter!(y::Vector, α::Number, fecoef::Vector,
+	refs::Vector, cache::Vector, β::Number)
+	if iszero(β)
+		@spawn_for_chunks 100_000 for i in eachindex(y)
+			@inbounds y[i] = α * fecoef[refs[i]] * cache[i]
+		end
+	elseif isone(β)
+		scatter!(y, α, fecoef, refs, cache)
+	else
+		@spawn_for_chunks 100_000 for i in eachindex(y)
+			# Fuse y[i] = β * y[i] + α * fecoef[refs[i]] * cache[i] to avoid a separate scaling pass.
+			@inbounds y[i] = β * y[i] + α * fecoef[refs[i]] * cache[i]
+		end
+	end
+end
+
 
 ##############################################################################
 ##
@@ -99,15 +115,15 @@ end
 ##
 ##############################################################################
 
-mutable struct FixedEffectSolverCPU{T} <: AbstractFixedEffectSolver{T}
-	m::FixedEffectLinearMapCPU{T}
+mutable struct FixedEffectSolverCPU{T,M<:FixedEffectLinearMapCPU{T},C<:FixedEffectCoefficients{Vector{T}}} <: AbstractFixedEffectSolver{T}
+	m::M
 	weights::AbstractVector
-	b::AbstractVector{T}
-	r::AbstractVector{T}
-	x::FixedEffectCoefficients{<: AbstractVector{T}}
-	v::FixedEffectCoefficients{<: AbstractVector{T}}
-	h::FixedEffectCoefficients{<: AbstractVector{T}}
-	hbar::FixedEffectCoefficients{<: AbstractVector{T}}
+	b::Vector{T}
+	r::Vector{T}
+	x::C
+	v::C
+	h::C
+	hbar::C
 end
 
 
@@ -160,5 +176,3 @@ end
 function copy_internal!(r::AbstractVector, feM::FixedEffectSolverCPU, field::Symbol)
 	copyto!(r, getfield(feM, field))
 end
-
-
