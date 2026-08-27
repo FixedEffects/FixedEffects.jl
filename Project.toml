@@ -1,6 +1,6 @@
 name = "FixedEffects"
 uuid = "c8885935-8500-56a7-9867-7708b20db0eb"
-version = "3.4.0"
+version = "3.4.1"
 
 [deps]
 GroupedArrays = "6407cd72-fade-4a84-8a1e-56e431fc1533"
