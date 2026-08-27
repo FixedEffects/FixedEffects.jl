@@ -1,8 +1,14 @@
 ##############################################################################
-## 
-## AbstractFixedEffectSolver
 ##
-## this type must defined solve_residuals!, solve_coefficients!
+## AbstractFixedEffectSolver and the public API
+##
+## solve_residuals! and solve_coefficients! (defined here) are generic over any
+## AbstractFixedEffectSolver. A backend provides:
+##   AbstractFixedEffectSolver{T}(fes, weights, ::Type{Val{method}})
+##   update_weights!(feM, weights)
+##   copy_internal!  (both directions, host <-> solver storage)
+##   mul! for its linear map and adjoint (used by lsmr!)
+## and may override recover_coefficients.
 ##
 ##############################################################################
 abstract type AbstractFixedEffectSolver{T} end
@@ -44,8 +50,6 @@ function solve_residuals!(y::AbstractVector{<: Real}, fes::AbstractVector{<: Fix
 	solve_residuals!(y, feM; maxiter = maxiter, tol = tol)
 end
 
-
-
 function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSolver{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	maxiter >= 0 || throw(ArgumentError("maxiter must be non-negative"))
 	# One cannot copy view of Vector (r) on GPU, so first collect the vector
@@ -56,7 +60,7 @@ function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSol
 	copyto!(feM.b, feM.r)
 	fill!(feM.x, zero(T))
 	iter, converged = 0, true
-	if length(feM.x.x) == 1
+	if length(feM.m.plan.blocks) == 1
 		mul!(feM.x, feM.m', feM.b, 1, 0)
 	else
 		_, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
@@ -100,7 +104,10 @@ function solve_residuals!(xs, feM::AbstractFixedEffectSolver; progress_bar = tru
     return xs, iterations, convergeds
 end
 
-
+# Guard: without this, a matrix would fall into the collection method above,
+# be iterated element-wise, and recurse until a StackOverflowError.
+solve_residuals!(::AbstractMatrix, ::AbstractFixedEffectSolver; kwargs...) =
+	throw(ArgumentError("pass the columns, e.g. eachcol(X), rather than a matrix"))
 
 
 """
@@ -158,9 +165,69 @@ function solve_coefficients!(r::AbstractVector, feM::AbstractFixedEffectSolver{T
 	fill!(feM.x, zero(T))
 	_, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
 	ch.isconverged || @warn "solve_coefficients! did not converge within maxiter LSMR iterations; returned values may be inaccurate." iterations=ch.mvps maxiter tol
-	for (x, scale) in zip(feM.x.x, feM.m.scales)
-		x .*=  scale
+	recover_coefficients(feM, eltype(r)), ch.mvps, ch.isconverged
+end
+
+
+function recover_coefficients(feM::AbstractFixedEffectSolver{T}, ::Type{Tout}) where {T, Tout}
+	return recover_coefficients(T, feM.m.fes, feM.m.plan, Matrix{T}[Array(x) for x in feM.x.x], Tout)
+end
+
+# Transform whitened block coefficients back to one vector per input FixedEffect,
+# expanded to observation level. `fes` and `coef_blocks` must live on the CPU.
+function recover_coefficients(::Type{T}, fes::Vector{<:FixedEffect}, plan::AbsorptionPlan,
+		coef_blocks::Vector{<:Matrix}, ::Type{Tout}) where {T, Tout}
+	group_coefs = [zeros(T, fe.n) for fe in fes]
+	for (coef_block, block, transform) in zip(coef_blocks, plan.blocks, plan.transforms)
+		k = block_width(block)
+		β = zeros(T, k)
+		@inbounds for g in 1:block.n
+			for a in 1:k
+				s = zero(T)
+				for c in 1:k
+					s += transform[a, c, g] * coef_block[c, g]
+				end
+				β[a] = s
+			end
+			for (column, term_id) in enumerate(block.input_terms)
+				group_coefs[term_id][g] = β[column]
+			end
+		end
 	end
-	x = Vector{eltype(r)}[collect(x) for x in feM.x.x]
-	full(normalize!(x, feM.m.fes), feM.m.fes), ch.mvps, ch.isconverged
+	normalize!(group_coefs, fes)
+	return Vector{Tout}[Tout.(coef[fe.refs]) for (coef, fe) in zip(group_coefs, fes)]
+end
+
+# Fixed-effect coefficients are generally not unique: within each connected
+# component, a constant can be shifted between the scalar (non-interacted)
+# fixed effects. Pin down a solution by demeaning every scalar fixed effect but
+# the first within each component (uses `components` from FixedEffect.jl).
+function normalize!(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVector{<:FixedEffect})
+	idx = findall(fe -> isa(fe.interaction, UnitWeights), fes)
+	length(idx) >= 2 && rescale!(view(fecoefs, idx), view(fes, idx))
+	return fecoefs
+end
+
+function rescale!(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVector{<:FixedEffect})
+	for component_vec in components(fes)
+		m = 0.0
+		# demean all fixed effects except the first
+		for j in length(fecoefs):(-1):2
+			fecoef, component = fecoefs[j], component_vec[j]
+			mj = 0.0
+			for k in component
+				mj += fecoef[k]
+			end
+			mj = mj / length(component)
+			for k in component
+				fecoef[k] -= mj
+			end
+			m += mj
+		end
+		# rescale the first fixed effects
+		fecoef, component = fecoefs[1], component_vec[1]
+		for k in component
+			fecoef[k] += m
+		end
+	end
 end

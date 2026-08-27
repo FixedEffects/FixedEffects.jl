@@ -5,7 +5,7 @@
 ##############################################################################
 
 struct FixedEffect{R <: AbstractVector{<:Integer}, I <: AbstractVector{<:Real}}
-	refs::R                 # refs must be between 0 and n
+	refs::R                 # group of each observation, in 1:n (0 marks a missing group; such rows must be dropped before solving)
 	interaction::I          # the continuous interaction
 	n::Int                  # Number of potential values (= maximum(refs))
 	function FixedEffect{R, I}(refs, interaction, n) where {R <: AbstractVector{<:Integer}, I <: AbstractVector{<: Real}}
@@ -103,44 +103,3 @@ function components(fes::AbstractVector{<:FixedEffect})
 	return out
 end
 
-##############################################################################
-##
-## normalize! a vector of fixedeffect coefficients using connected components
-## 
-##############################################################################
-
-function normalize!(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVector{<:FixedEffect})
-	# The solution is generally not unique. Find connected components and scale accordingly
-	idx = findall(fe -> isa(fe.interaction, UnitWeights), fes)
-	length(idx) >= 2 && rescale!(view(fecoefs, idx), view(fes, idx))
-	return fecoefs
-end
-
-function rescale!(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVector{<:FixedEffect})
-	for component_vec in components(fes)
-		m = 0.0
-		# demean all fixed effects except the first
-		for j in length(fecoefs):(-1):2
-			fecoef, component = fecoefs[j], component_vec[j]
-			mj = 0.0
-			for k in component
-				mj += fecoef[k]
-			end
-			mj = mj / length(component)
-			for k in component
-				fecoef[k] -= mj
-			end
-			m += mj
-		end
-		# rescale the first fixed effects
-		fecoef, component = fecoefs[1], component_vec[1]
-		for k in component
-			fecoef[k] += m
-		end
-	end
-end
-
-function full(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVector{<:FixedEffect})
-	# add collect in case Metal, since then fecoef is Vector while fe.refs is GPU
-	[fecoef[collect(fe.refs)] for (fecoef, fe) in zip(fecoefs, fes)]
-end

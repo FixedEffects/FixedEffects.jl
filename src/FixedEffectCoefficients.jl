@@ -1,17 +1,17 @@
-# Define methods used in LSMR
-
 ##############################################################################
-## 
-## FixedEffectCoefficients : vector x in A'Ax = A'b
 ##
-## We define these methods used in lsmr! (duck typing): 
-## copyto!, fill!, rmul!, axpy!, norm
+## FixedEffectCoefficients: the whitened coefficient vector x seen by lsmr!,
+## stored as one k × n matrix per AbsorbedBlock (column g holds the
+## whitened coordinates of group g).
 ##
-## Do not define iteration on each fixedeffect since it would conflict with eltype
+## We define the methods lsmr! needs (duck typing):
+## copyto!, fill!, rmul!, axpy!, norm, similar
+##
+## Do not define iteration on each block since it would conflict with eltype
 ##
 ##############################################################################
 
-struct FixedEffectCoefficients{U <: AbstractVector}
+struct FixedEffectCoefficients{U <: AbstractArray}
 	x::Vector{U}
 end
 
@@ -52,4 +52,8 @@ function LinearAlgebra.axpy!(α::Number, fecoefs1::FixedEffectCoefficients, feco
 		axpy!(α, x1, x2)
 	end
 	return fecoefs2
+end
+
+function Base.similar(fecoefs::FixedEffectCoefficients, ::Type{T} = eltype(fecoefs)) where {T}
+	return FixedEffectCoefficients([similar(x, T) for x in fecoefs.x])
 end
