@@ -194,18 +194,13 @@ function recover_coefficients(::Type{T}, fes::Vector{<:FixedEffect}, plan::Absor
 			end
 		end
 	end
-	normalize!(group_coefs, fes)
-	return Vector{Tout}[Tout.(coef[fe.refs]) for (coef, fe) in zip(group_coefs, fes)]
-end
-
-# Fixed-effect coefficients are generally not unique: within each connected
-# component, a constant can be shifted between the scalar (non-interacted)
-# fixed effects. Pin down a solution by demeaning every scalar fixed effect but
-# the first within each component.
-function normalize!(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVector{<:FixedEffect})
+	# Fixed-effect coefficients are generally not unique: within each connected
+	# component, a constant can be shifted between the scalar (non-interacted)
+	# fixed effects. Pin down a solution by demeaning every scalar fixed effect but
+	# the first within each component.
 	idx = findall(fe -> isa(fe.interaction, UnitWeights), fes)
-	length(idx) >= 2 && rescale!(view(fecoefs, idx), view(fes, idx))
-	return fecoefs
+	length(idx) >= 2 && rescale!(view(group_coefs, idx), view(fes, idx))
+	return Vector{Tout}[Tout.(coef[fe.refs]) for (coef, fe) in zip(group_coefs, fes)]
 end
 
 function rescale!(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVector{<:FixedEffect})
