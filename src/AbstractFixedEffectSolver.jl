@@ -209,69 +209,113 @@ function normalize!(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVe
 end
 
 function rescale!(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVector{<:FixedEffect})
-	for component_vec in components(fes)
-		m = 0.0
-		# demean all fixed effects except the first
-		for j in length(fecoefs):(-1):2
-			fecoef, component = fecoefs[j], component_vec[j]
-			mj = 0.0
-			for k in component
-				mj += fecoef[k]
+	labels, ncomponents = components(fes)
+	shift = zeros(ncomponents)   # per component, total mean moved to the first fixed effect
+	sums = zeros(ncomponents)
+	counts = zeros(Int, ncomponents)
+	# demean all fixed effects except the first
+	for j in length(fecoefs):(-1):2
+		fecoef, label = fecoefs[j], labels[j]
+		fill!(sums, 0.0)
+		fill!(counts, 0)
+		for g in eachindex(label)
+			c = label[g]
+			if c > 0
+				sums[c] += fecoef[g]
+				counts[c] += 1
 			end
-			mj = mj / length(component)
-			for k in component
-				fecoef[k] -= mj
-			end
-			m += mj
 		end
-		# rescale the first fixed effects
-		fecoef, component = fecoefs[1], component_vec[1]
-		for k in component
-			fecoef[k] += m
+		for g in eachindex(label)
+			c = label[g]
+			if c > 0
+				fecoef[g] -= sums[c] / counts[c]
+			end
+		end
+		for c in 1:ncomponents
+			if counts[c] > 0
+				shift[c] += sums[c] / counts[c]
+			end
+		end
+	end
+	# rescale the first fixed effect
+	fecoef, label = fecoefs[1], labels[1]
+	for g in eachindex(label)
+		c = label[g]
+		if c > 0
+			fecoef[g] += shift[c]
 		end
 	end
 end
 
-# Returns a vector of all connected components
-# A component is a vector that, for each fixed effect,
-# contains all the refs that are included in the component.
+# Connected components of the graph linking groups of different fixed effects
+# through shared observations, via union-find over the group labels of all
+# fixed effects. Returns, for each fixed effect, a vector mapping each group to
+# its component id (0 for a group with no observation, which can arise from
+# subsetting), and the number of components.
 function components(fes::AbstractVector{<:FixedEffect})
-	refs_vec = Vector{Int}[fe.refs for fe in fes]
-	refsrev_vec = Vector{Vector{Int}}[refsrev(fe) for fe in fes]
-	visited = falses(length(refs_vec[1]))
-	out = Vector{Set{Int}}[]
-	for i in eachindex(visited)
-		if !visited[i]
-			# obs not visited yet, so create new component
-			component_vec = Set{Int}[Set{Int}() for _ in 1:length(refsrev_vec)]
-			# visit all obs in the same components
-			tovisit = Set{Int}(i)
-			while !isempty(tovisit)
-				for (component, refs, refsrev) in zip(component_vec, refs_vec, refsrev_vec)
-					ref = refs[i]
-					# if group is not in component yet
-					if ref ∉ component
-						# add group to the component
-						push!(component, ref)
-						# visit other observations in same group
-						union!(tovisit, refsrev[ref])
-					end
-				end
-				# mark obs as visited
-				i = pop!(tovisit)
-				visited[i] = true
-			end
-			push!(out, component_vec)
+	offsets = Vector{Int}(undef, length(fes) + 1)
+	offsets[1] = 0
+	for (j, fe) in enumerate(fes)
+		offsets[j + 1] = offsets[j] + fe.n
+	end
+	# each observation links its first-effect group to its group in every other effect
+	parent = collect(1:offsets[end])
+	treesize = ones(Int, offsets[end])
+	refs1 = fes[1].refs
+	for j in 2:length(fes)
+		refsj = fes[j].refs
+		offset = offsets[j]
+		for i in eachindex(refs1)
+			_union!(parent, treesize, Int(refs1[i]), offset + Int(refsj[i]))
 		end
 	end
-	return out
+	seen = falses(offsets[end])
+	for (j, fe) in enumerate(fes)
+		offset = offsets[j]
+		for r in fe.refs
+			seen[offset + Int(r)] = true
+		end
+	end
+	labels = Vector{Int}[zeros(Int, fe.n) for fe in fes]
+	component_of_root = zeros(Int, offsets[end])
+	ncomponents = 0
+	for (j, fe) in enumerate(fes)
+		label, offset = labels[j], offsets[j]
+		for g in 1:fe.n
+			seen[offset + g] || continue
+			root = _find!(parent, offset + g)
+			c = component_of_root[root]
+			if c == 0
+				ncomponents += 1
+				c = ncomponents
+				component_of_root[root] = c
+			end
+			label[g] = c
+		end
+	end
+	return labels, ncomponents
 end
 
-# Return a vector of sets that contains the indices of each unique value
-function refsrev(fe::FixedEffect)
-	out = Vector{Int}[Int[] for _ in 1:fe.n]
-	for i in eachindex(fe.refs)
-		push!(out[fe.refs[i]], i)
+# find with path halving
+function _find!(parent::Vector{Int}, i::Int)
+	@inbounds while parent[i] != i
+		parent[i] = parent[parent[i]]
+		i = parent[i]
 	end
-	return out
+	return i
+end
+
+# union by size
+function _union!(parent::Vector{Int}, treesize::Vector{Int}, i::Int, j::Int)
+	ri = _find!(parent, i)
+	rj = _find!(parent, j)
+	ri == rj && return
+	if treesize[ri] < treesize[rj]
+		ri, rj = rj, ri
+	end
+	@inbounds begin
+		parent[rj] = ri
+		treesize[ri] += treesize[rj]
+	end
+	return
 end

@@ -300,3 +300,36 @@ end
 	FixedEffects._USE_THREADED_GATHER[] = true
 	@test r_default ≈ r_serial atol = 1e-8
 end
+
+@testset "connected components normalization" begin
+	# two components: {p1 ∈ (1, 2)} × {p2 ∈ (1, 2)} and {p1 ∈ (3, 4)} × {p2 = 3}
+	p1c = [1, 1, 2, 2, 3, 3, 4]
+	p2c = [1, 2, 1, 2, 3, 3, 3]
+	yc = [0.1, 1.3, -0.4, 0.7, 2.0, -1.1, 0.6]
+	fes_c = [FixedEffect(p1c), FixedEffect(p2c)]
+	labels, ncomponents = FixedEffects.components(fes_c)
+	@test ncomponents == 2
+	@test labels[1][1] == labels[1][2] == labels[2][1] == labels[2][2]
+	@test labels[1][3] == labels[1][4] == labels[2][3]
+	@test labels[1][1] != labels[1][3]
+	coefs_c, _, conv_c = solve_coefficients!(copy(yc), fes_c)
+	@test conv_c
+	rc = solve_residuals!(copy(yc), fes_c)[1]
+	@test yc .- coefs_c[1] .- coefs_c[2] ≈ rc atol = 1e-6
+	# the second fixed effect has mean zero over the groups of each component
+	@test coefs_c[2][1] + coefs_c[2][2] ≈ 0 atol = 1e-6
+	@test coefs_c[2][5] ≈ 0 atol = 1e-6
+
+	# groups with no observation (from subsetting) are ignored
+	fes_s = [FixedEffect(p1c)[1:4], FixedEffect(p2c)[1:4]]
+	labels_s, ncomponents_s = FixedEffects.components(fes_s)
+	@test ncomponents_s == 1
+	@test labels_s[1][3:4] == [0, 0]
+	@test labels_s[2][3] == 0
+	ys = yc[1:4]
+	coefs_s, _, conv_s = solve_coefficients!(copy(ys), fes_s)
+	@test conv_s
+	@test all(all(isfinite, coef) for coef in coefs_s)
+	rs = solve_residuals!(copy(ys), fes_s)[1]
+	@test ys .- coefs_s[1] .- coefs_s[2] ≈ rs atol = 1e-6
+end
