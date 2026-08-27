@@ -144,6 +144,9 @@ solve_residuals!(deepcopy(x), feM)[1] ≈ solve_residuals!(deepcopy(x), fes, wei
 feM_compat = FixedEffects.AbstractFixedEffectSolver{Float64}(fes, weights, Val{:cpu}, Base.Threads.nthreads())
 @test solve_residuals!(deepcopy(x), feM_compat)[1] ≈ solve_residuals!(deepcopy(x), fes, weights)[1]
 
+# a matrix must be passed as columns (e.g. eachcol), not raw
+@test_throws ArgumentError solve_residuals!(rand(10, 2), feM)
+
 # test interacted fixed effects
 interaction = [0.2, 0.8, 0.3, 0.7, 0.5, 0.5, 0.4, 0.6, 0.1, 0.9]
 fes_interact = [FixedEffect(p1, interaction = interaction)]
@@ -188,11 +191,12 @@ fes_both = [FixedEffect(p1), FixedEffect(p1, interaction = interaction)]
 	coefs = solve_coefficients!(copy(y), fes_block, weights)[1]
 	@test y .- coefs[1] .- slope .* coefs[2] .- slope.^2 .* coefs[3] ≈ r_block atol = 1e-10
 
-	Y = hcat(y, 2 .* y .+ 1)
-	Y_block = copy(Y)
-	solve_residuals!(Y_block, fes_block, weights; progress_bar = false)
-	@test Y_block[:, 1] ≈ r_block atol = 1e-10
-	@test Y_block[:, 2] ≈ solve_residuals!(copy(Y[:, 2]), fes_block, weights)[1] atol = 1e-10
+	# several variables through the collection fallback, sharing one solver
+	feM_block = FixedEffects.AbstractFixedEffectSolver{Float64}(fes_block, weights, Val{:cpu})
+	cols = [copy(y), 2 .* y .+ 1]
+	solve_residuals!(cols, feM_block; progress_bar = false)
+	@test cols[1] ≈ r_block atol = 1e-10
+	@test cols[2] ≈ solve_residuals!(2 .* y .+ 1, fes_block, weights)[1] atol = 1e-10
 
 	id_big = repeat(1:2, inner = 3)
 	slope_big = [100_000.0, 100_001.0, 100_002.0, 200_000.0, 200_001.0, 200_002.0]

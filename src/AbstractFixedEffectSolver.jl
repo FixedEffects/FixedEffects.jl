@@ -50,19 +50,6 @@ function solve_residuals!(y::AbstractVector{<: Real}, fes::AbstractVector{<: Fix
 	solve_residuals!(y, feM; maxiter = maxiter, tol = tol)
 end
 
-function solve_residuals!(X::AbstractMatrix{<: Real}, fes::AbstractVector{<: FixedEffect}, w::AbstractWeights = uweights(eltype(X), size(X, 1));
-	method::Symbol = :cpu,
-	double_precision::Bool = method == :cpu,
-	tol::Real = double_precision ? 1e-8 : 1e-6,
-	maxiter::Integer = 10000,
-	progress_bar::Bool = true)
-	any((length(fe) != size(X, 1) for fe in fes)) && error("FixedEffects must have the same length as X")
-	feM = AbstractFixedEffectSolver{double_precision ? Float64 : Float32}(fes, w, Val{method})
-	solve_residuals!(X, feM; maxiter = maxiter, tol = tol, progress_bar = progress_bar)
-end
-
-
-
 function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSolver{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
 	maxiter >= 0 || throw(ArgumentError("maxiter must be non-negative"))
 	# One cannot copy view of Vector (r) on GPU, so first collect the vector
@@ -117,13 +104,10 @@ function solve_residuals!(xs, feM::AbstractFixedEffectSolver; progress_bar = tru
     return xs, iterations, convergeds
 end
 
-function solve_residuals!(X::AbstractMatrix{<:Real}, feM::AbstractFixedEffectSolver;
-		progress_bar = true, kwargs...)
-	_, iterations, convergeds = solve_residuals!(eachcol(X), feM; progress_bar = progress_bar, kwargs...)
-	return X, iterations, convergeds
-end
-
-
+# Guard: without this, a matrix would fall into the collection method above,
+# be iterated element-wise, and recurse until a StackOverflowError.
+solve_residuals!(::AbstractMatrix, ::AbstractFixedEffectSolver; kwargs...) =
+	throw(ArgumentError("pass the columns, e.g. eachcol(X), rather than a matrix"))
 
 
 """
