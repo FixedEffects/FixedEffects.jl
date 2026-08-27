@@ -1,6 +1,6 @@
 module CUDAExt
 using FixedEffects, CUDA
-using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!, AbstractFixedEffectLinearMap, copy_internal!, AbsorptionPlan, AbsorbedBlock, block_width
+using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!, AbstractFixedEffectLinearMap, copy_internal!, AbsorptionPlan, AbsorbedBlock, _group_permutation, block_width
 CUDA.allowscalar(false)
 
 ##############################################################################
@@ -25,14 +25,38 @@ CUDA.allowscalar(false)
 _cu(T::Type, w::UnitWeights) = fill!(CuVector{T}(undef, length(w)), w[1])
 _cu(T::Type, w::AbstractVector) = CuVector{T}(convert(Vector{T}, w))
 
+# Per-block plan for the adjoint gather (A'u), chosen once at construction:
+# bucketize (one thread block per group) for low cardinality, else atomic adds.
+struct AtomicGather end
+struct BucketGather{V<:AbstractVector}
+	perm::V
+	offsets::V
+end
+
 mutable struct FixedEffectLinearMapCUDA{T,P<:AbsorptionPlan} <: AbstractFixedEffectLinearMap{T}
 	fes::Vector{<:FixedEffect}
 	plan::P
+	gathers::Vector{Union{AtomicGather, BucketGather}}
 end
 
 function FixedEffectLinearMapCUDA{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights) where {T}
 	plan = _cu_plan(T, fes, weights)
-	return FixedEffectLinearMapCUDA{T,typeof(plan)}(fes, plan)
+	G = Union{AtomicGather, BucketGather}
+	gathers = Vector{G}(undef, length(plan.blocks))
+	for i in eachindex(plan.blocks)
+		refs = fes[plan.blocks[i].input_terms[1]].refs
+		gathers[i] = _gather_strategy(refs, plan.blocks[i].n)
+	end
+	return FixedEffectLinearMapCUDA{T,typeof(plan)}(fes, plan, gathers)
+end
+
+function _gather_strategy(refs::AbstractVector{<:Integer}, nlevels::Int)
+	if nlevels < min(100_000, div(length(refs), 16))
+		_, offsets, perm = _group_permutation(refs, nlevels)
+		return BucketGather(CuVector{Int}(perm), CuVector{Int}(offsets))
+	else
+		return AtomicGather()
+	end
 end
 
 function _cu_plan(::Type{T}, fes::Vector{<:FixedEffect}, weights::AbstractWeights) where {T}
@@ -91,18 +115,62 @@ function LinearAlgebra.mul!(fecoefs::FixedEffectCoefficients,
 		y::CuVector, α::Number, β::Number) where {T}
 	fem = adjoint(Cfem)
 	rmul!(fecoefs, β)
-	for (coef_block, block, qrows) in zip(fecoefs.x, fem.plan.blocks, fem.plan.qrows)
-		_gather_block!(coef_block, block.refs, qrows, y, α)
+	for (coef_block, block, qrows, gather) in zip(fecoefs.x, fem.plan.blocks, fem.plan.qrows, fem.gathers)
+		_gather_block!(coef_block, block.refs, qrows, y, α, gather)
 	end
 	return fecoefs
 end
 
 function _gather_block!(coef_block::CuMatrix, refs::CuVector, qrows::CuMatrix,
-		y::CuVector, α::Number)
+		y::CuVector, α::Number, gather::BucketGather)
+	nthreads = 256
+	nblocks = size(coef_block, 2)
+	@cuda threads=nthreads blocks=nblocks gather_block_kernel_bin!(coef_block, α, y, qrows,
+		gather.perm, gather.offsets, Val(nthreads), size(coef_block, 1))
+	return coef_block
+end
+
+function _gather_block!(coef_block::CuMatrix, refs::CuVector, qrows::CuMatrix,
+		y::CuVector, α::Number, ::AtomicGather)
 	nthreads = 256
 	nblocks = cld(length(y), nthreads)
 	@cuda threads=nthreads blocks=nblocks gather_block_kernel!(coef_block, refs, qrows, y, α, size(coef_block, 1))
 	return coef_block
+end
+
+function gather_block_kernel_bin!(coef_block, α, y, qrows, perm, offsets,
+		::Val{NT}, k) where {NT}
+	g = Int(blockIdx().x)
+	tid = Int(threadIdx().x)
+	T = eltype(coef_block)
+	shared = CUDA.CuStaticSharedArray(T, NT)
+	start = @inbounds offsets[g]
+	stop = @inbounds offsets[g + 1] - 1
+
+	for c in 1:k
+		acc = zero(T)
+		j = start + tid - 1
+		while j <= stop
+			i = @inbounds perm[j]
+			@inbounds acc += α * y[i] * qrows[c, i]
+			j += NT
+		end
+
+		@inbounds shared[tid] = acc
+		CUDA.sync_threads()
+		offset = NT ÷ 2
+		while offset > 0
+			if tid <= offset
+				@inbounds shared[tid] += shared[tid + offset]
+			end
+			CUDA.sync_threads()
+			offset ÷= 2
+		end
+		if tid == 1
+			@inbounds coef_block[c, g] += shared[1]
+		end
+	end
+	return nothing
 end
 
 function gather_block_kernel!(coef_block, refs, qrows, y, α, k)

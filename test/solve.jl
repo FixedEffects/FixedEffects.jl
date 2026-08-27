@@ -210,6 +210,42 @@ fes_both = [FixedEffect(p1), FixedEffect(p1, interaction = interaction)]
 		X_big[i, 2 + id_big[i]] = slope_big[i]
 	end
 	@test solve_residuals!(copy(y_big), fes_big)[1] ≈ y_big - X_big * (pinv(X_big) * y_big) atol = 1e-8
+
+	# The stable moment path also handles weights, a large slope offset, and the
+	# less common input order in which the slope precedes the intercept.
+	id_stable = repeat(1:2, inner = 3)
+	slope_stable = 1.0e7 .+ [0.0, 1.0, 2.0, 3.0, 5.0, 8.0]
+	weights_stable = Weights([1.0, 2.0, 4.0, 1.5, 2.5, 3.5])
+	y_stable = [1.0, -2.0, 4.0, 0.5, 3.0, -1.0]
+	X_stable = zeros(length(id_stable), 4)
+	for i in eachindex(id_stable)
+		g = id_stable[i]
+		X_stable[i, g] = 1
+		X_stable[i, 2 + g] = slope_stable[i] - slope_stable[firstindex(slope_stable)]
+	end
+	sqrtw_stable = sqrt.(weights_stable)
+	r_stable = (sqrtw_stable .* y_stable -
+		(X_stable .* sqrtw_stable) * (pinv(X_stable .* sqrtw_stable) *
+		(sqrtw_stable .* y_stable))) ./ sqrtw_stable
+	for fes_stable in ([FixedEffect(id_stable), FixedEffect(id_stable, interaction = slope_stable)],
+			[FixedEffect(id_stable, interaction = slope_stable), FixedEffect(id_stable)])
+		plan_stable = FixedEffects.AbsorptionPlan(Float64, fes_stable, weights_stable)
+		@test plan_stable.ranks[1] == [2, 2]
+		for g in 1:2
+			rows = findall(==(g), id_stable)
+			Q = permutedims(plan_stable.qrows[1][:, rows])
+			@test Q' * Q ≈ I atol = 1e-12
+		end
+		@test solve_residuals!(copy(y_stable), fes_stable, weights_stable)[1] ≈
+			r_stable atol = 1e-10
+	end
+
+	# Two slopes without an intercept still use the general block path.
+	slope2 = [1.0, 2.0, 4.0, 2.0, 3.0, 5.0]
+	fes_slopes = [FixedEffect(id_stable, interaction = slope2),
+		FixedEffect(id_stable, interaction = slope2 .^ 2)]
+	plan_slopes = FixedEffects.AbsorptionPlan(Float64, fes_slopes, weights_stable)
+	@test plan_slopes.ranks[1] == [2, 2]
 end
 
 # Independent implementation of the exact one-block projection residual,

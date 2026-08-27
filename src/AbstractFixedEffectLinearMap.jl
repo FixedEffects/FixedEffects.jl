@@ -10,12 +10,21 @@
 ##
 ##############################################################################
 
+# Concrete subtypes must be mutable and expose two fields used by shared code:
+#   fes  — the original fixed effects, used for the observation count and coefficient recovery;
+#   plan — the AbsorptionPlan used by the operator, replaceable when weights change.
 abstract type AbstractFixedEffectLinearMap{T} end
+
+Base.eltype(x::AbstractFixedEffectLinearMap{T}) where {T} = T
 
 Base.adjoint(fem::AbstractFixedEffectLinearMap) = Adjoint(fem)
 
 function Base.size(fem::AbstractFixedEffectLinearMap, dim::Integer)
-	(dim == 1) ? length(fem.fes[1].refs) : (dim == 2) ? _ncoef(fem.plan) : 1
+	if dim == 1
+		return length(fem.fes[1].refs)
+	elseif dim == 2
+		return sum(block_width(block) * block.n for block in fem.plan.blocks)
+	else
+		1
+	end
 end
-
-Base.eltype(x::AbstractFixedEffectLinearMap{T}) where {T} = T
