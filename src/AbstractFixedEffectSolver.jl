@@ -201,7 +201,7 @@ end
 # Fixed-effect coefficients are generally not unique: within each connected
 # component, a constant can be shifted between the scalar (non-interacted)
 # fixed effects. Pin down a solution by demeaning every scalar fixed effect but
-# the first within each component (uses `components` from FixedEffect.jl).
+# the first within each component.
 function normalize!(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVector{<:FixedEffect})
 	idx = findall(fe -> isa(fe.interaction, UnitWeights), fes)
 	length(idx) >= 2 && rescale!(view(fecoefs, idx), view(fes, idx))
@@ -230,4 +230,48 @@ function rescale!(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVect
 			fecoef[k] += m
 		end
 	end
+end
+
+# Returns a vector of all connected components
+# A component is a vector that, for each fixed effect,
+# contains all the refs that are included in the component.
+function components(fes::AbstractVector{<:FixedEffect})
+	refs_vec = Vector{Int}[fe.refs for fe in fes]
+	refsrev_vec = Vector{Vector{Int}}[refsrev(fe) for fe in fes]
+	visited = falses(length(refs_vec[1]))
+	out = Vector{Set{Int}}[]
+	for i in eachindex(visited)
+		if !visited[i]
+			# obs not visited yet, so create new component
+			component_vec = Set{Int}[Set{Int}() for _ in 1:length(refsrev_vec)]
+			# visit all obs in the same components
+			tovisit = Set{Int}(i)
+			while !isempty(tovisit)
+				for (component, refs, refsrev) in zip(component_vec, refs_vec, refsrev_vec)
+					ref = refs[i]
+					# if group is not in component yet
+					if ref ∉ component
+						# add group to the component
+						push!(component, ref)
+						# visit other observations in same group
+						union!(tovisit, refsrev[ref])
+					end
+				end
+				# mark obs as visited
+				i = pop!(tovisit)
+				visited[i] = true
+			end
+			push!(out, component_vec)
+		end
+	end
+	return out
+end
+
+# Return a vector of sets that contains the indices of each unique value
+function refsrev(fe::FixedEffect)
+	out = Vector{Int}[Int[] for _ in 1:fe.n]
+	for i in eachindex(fe.refs)
+		push!(out[fe.refs[i]], i)
+	end
+	return out
 end
