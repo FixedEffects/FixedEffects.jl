@@ -194,40 +194,123 @@ function recover_coefficients(::Type{T}, fes::Vector{<:FixedEffect}, plan::Absor
 			end
 		end
 	end
-	normalize!(group_coefs, fes)
+	# Fixed-effect coefficients are generally not unique: within each connected
+	# component, a constant can be shifted between the scalar (non-interacted)
+	# fixed effects. Pin down a solution by demeaning every scalar fixed effect but
+	# the first within each component.
+	idx = findall(fe -> isa(fe.interaction, UnitWeights), fes)
+	length(idx) >= 2 && rescale!(view(group_coefs, idx), view(fes, idx))
 	return Vector{Tout}[Tout.(coef[fe.refs]) for (coef, fe) in zip(group_coefs, fes)]
 end
 
-# Fixed-effect coefficients are generally not unique: within each connected
-# component, a constant can be shifted between the scalar (non-interacted)
-# fixed effects. Pin down a solution by demeaning every scalar fixed effect but
-# the first within each component (uses `components` from FixedEffect.jl).
-function normalize!(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVector{<:FixedEffect})
-	idx = findall(fe -> isa(fe.interaction, UnitWeights), fes)
-	length(idx) >= 2 && rescale!(view(fecoefs, idx), view(fes, idx))
-	return fecoefs
-end
-
 function rescale!(fecoefs::AbstractVector{<: Vector{<: Real}}, fes::AbstractVector{<:FixedEffect})
-	for component_vec in components(fes)
-		m = 0.0
-		# demean all fixed effects except the first
-		for j in length(fecoefs):(-1):2
-			fecoef, component = fecoefs[j], component_vec[j]
-			mj = 0.0
-			for k in component
-				mj += fecoef[k]
+	labels, ncomponents = components(fes)
+	shift = zeros(ncomponents)   # per component, total mean moved to the first fixed effect
+	sums = zeros(ncomponents)
+	counts = zeros(Int, ncomponents)
+	# demean all fixed effects except the first
+	for j in length(fecoefs):(-1):2
+		fecoef, label = fecoefs[j], labels[j]
+		fill!(sums, 0.0)
+		fill!(counts, 0)
+		for g in eachindex(label)
+			c = label[g]
+			if c > 0
+				sums[c] += fecoef[g]
+				counts[c] += 1
 			end
-			mj = mj / length(component)
-			for k in component
-				fecoef[k] -= mj
-			end
-			m += mj
 		end
-		# rescale the first fixed effects
-		fecoef, component = fecoefs[1], component_vec[1]
-		for k in component
-			fecoef[k] += m
+		for g in eachindex(label)
+			c = label[g]
+			if c > 0
+				fecoef[g] -= sums[c] / counts[c]
+			end
+		end
+		for c in 1:ncomponents
+			if counts[c] > 0
+				shift[c] += sums[c] / counts[c]
+			end
 		end
 	end
+	# rescale the first fixed effect
+	fecoef, label = fecoefs[1], labels[1]
+	for g in eachindex(label)
+		c = label[g]
+		if c > 0
+			fecoef[g] += shift[c]
+		end
+	end
+end
+
+# Connected components of the graph linking groups of different fixed effects
+# through shared observations, via union-find over the group labels of all
+# fixed effects. Returns, for each fixed effect, a vector mapping each group to
+# its component id (0 for a group with no observation, which can arise from
+# subsetting), and the number of components.
+function components(fes::AbstractVector{<:FixedEffect})
+	offsets = Vector{Int}(undef, length(fes) + 1)
+	offsets[1] = 0
+	for (j, fe) in enumerate(fes)
+		offsets[j + 1] = offsets[j] + fe.n
+	end
+	# each observation links its first-effect group to its group in every other effect
+	parent = collect(1:offsets[end])
+	treesize = ones(Int, offsets[end])
+	refs1 = fes[1].refs
+	for j in 2:length(fes)
+		refsj = fes[j].refs
+		offset = offsets[j]
+		for i in eachindex(refs1)
+			_union!(parent, treesize, Int(refs1[i]), offset + Int(refsj[i]))
+		end
+	end
+	seen = falses(offsets[end])
+	for (j, fe) in enumerate(fes)
+		offset = offsets[j]
+		for r in fe.refs
+			seen[offset + Int(r)] = true
+		end
+	end
+	labels = Vector{Int}[zeros(Int, fe.n) for fe in fes]
+	component_of_root = zeros(Int, offsets[end])
+	ncomponents = 0
+	for (j, fe) in enumerate(fes)
+		label, offset = labels[j], offsets[j]
+		for g in 1:fe.n
+			seen[offset + g] || continue
+			root = _find!(parent, offset + g)
+			c = component_of_root[root]
+			if c == 0
+				ncomponents += 1
+				c = ncomponents
+				component_of_root[root] = c
+			end
+			label[g] = c
+		end
+	end
+	return labels, ncomponents
+end
+
+# find with path halving
+function _find!(parent::Vector{Int}, i::Int)
+	@inbounds while parent[i] != i
+		parent[i] = parent[parent[i]]
+		i = parent[i]
+	end
+	return i
+end
+
+# union by size
+function _union!(parent::Vector{Int}, treesize::Vector{Int}, i::Int, j::Int)
+	ri = _find!(parent, i)
+	rj = _find!(parent, j)
+	ri == rj && return
+	if treesize[ri] < treesize[rj]
+		ri, rj = rj, ri
+	end
+	@inbounds begin
+		parent[rj] = ri
+		treesize[ri] += treesize[rj]
+	end
+	return
 end
