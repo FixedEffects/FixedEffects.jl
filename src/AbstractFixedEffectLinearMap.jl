@@ -1,71 +1,21 @@
 ##############################################################################
-## 
-## 
-## Implement AbstractFixedEffectLinearMap
 ##
-## Model matrix of categorical variables
-## mutiplied by diag(1/sqrt(∑w * interaction^2, ..., ∑w * interaction^2) (Jacobi preconditoner)
+## AbstractFixedEffectLinearMap
 ##
-## We define these methods used in lsmr! (duck typing):
-## eltyp
-## size
-## mul!
+## The whitened operator A = W^(1/2) * (fixed-effect design) * R used by lsmr!,
+## where R is the per-group block transform stored in the AbsorptionPlan.
+##
+## Each backend stores an AbsorptionPlan in a `plan` field and defines mul!
+## for itself and its adjoint. lsmr! needs (duck typing): eltype, size, mul!.
 ##
 ##############################################################################
 
 abstract type AbstractFixedEffectLinearMap{T} end
 
-# Per-fixed-effect plan for the adjoint gather (A'u). Chosen once at construction and
-# dispatched on by each backend's `gather!`. The forward map (A = scatter) needs only the
-# preconditioner `caches[i]` and is shared; the gather plan lives in `gathers[i]`.
-# CPU uses Serial/Threaded; the GPU backends use Atomic/Bucket.
-struct SerialGather end
-struct ThreadedGather{V<:AbstractVector}
-	buffers::Vector{V}              # one length-fe.n accumulator per thread
-	ranges::Vector{UnitRange{Int}}  # contiguous row chunks
-end
-struct AtomicGather end
-struct BucketGather{V<:AbstractVector}
-	perm::V        # observation indices sorted by group
-	offsets::V     # CSR offsets into perm (length ngroups + 1)
-end
-
 Base.adjoint(fem::AbstractFixedEffectLinearMap) = Adjoint(fem)
 
 function Base.size(fem::AbstractFixedEffectLinearMap, dim::Integer)
-	(dim == 1) ? length(fem.fes[1].refs) : (dim == 2) ? sum(fe.n for fe in fem.fes) : 1
+	(dim == 1) ? length(fem.fes[1].refs) : (dim == 2) ? _ncoef(fem.plan) : 1
 end
 
 Base.eltype(x::AbstractFixedEffectLinearMap{T}) where {T} = T
-
-function scatter!(y, α, fecoef, refs, cache, β)
-	isone(β) && return scatter!(y, α, fecoef, refs, cache)
-	iszero(β) ? fill!(y, zero(eltype(y))) : rmul!(y, β)
-	scatter!(y, α, fecoef, refs, cache)
-end
-
-function LinearAlgebra.mul!(fecoefs::FixedEffectCoefficients, 
-	Cfem::Adjoint{T, <:AbstractFixedEffectLinearMap{T}},
-	y::AbstractVector, α::Number, β::Number) where {T}
-	fem = adjoint(Cfem)
-	rmul!(fecoefs, β)
-	for (fecoef, fe, cache, gather) in zip(fecoefs.x, fem.fes, fem.caches, fem.gathers)
-		gather!(fecoef, fe.refs, α, y, cache, gather)
-	end
-	return fecoefs
-end
-
-function LinearAlgebra.mul!(y::AbstractVector, fem::AbstractFixedEffectLinearMap, 
-			  fecoefs::FixedEffectCoefficients, α::Number, β::Number)
-	βj = β
-	any_fe = false
-	for (fecoef, fe, cache) in zip(fecoefs.x, fem.fes, fem.caches)
-		scatter!(y, α, fecoef, fe.refs, cache, βj)
-		βj = one(βj)
-		any_fe = true
-	end
-	if !any_fe
-		rmul!(y, β)
-	end
-	return y
-end

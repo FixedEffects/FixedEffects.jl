@@ -23,12 +23,23 @@ include("utils/lsmr.jl")
 include("utils/progressbar.jl")
 
 include("FixedEffect.jl")
+include("AbsorptionPlan.jl")
 include("AbstractFixedEffectSolver.jl")
 include("FixedEffectCoefficients.jl")
 include("AbstractFixedEffectLinearMap.jl")
-include("SolverCPU.jl")
+include("CPU.jl")
 
+##############################################################################
+##
+## Compatibility shims
+##
+##############################################################################
 
+function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights,
+		method::Type{Val{M}}, nthreads::Integer) where {T,M}
+	nthreads >= 1 || throw(ArgumentError("nthreads must be positive"))
+	return AbstractFixedEffectSolver{T}(fes, weights, method)
+end
 
 
 include("precompile.jl")

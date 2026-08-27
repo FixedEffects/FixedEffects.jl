@@ -1,119 +1,128 @@
 module CUDAExt
 using FixedEffects, CUDA
-using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!,  lsmr!, AbstractFixedEffectLinearMap, copy_internal!, AtomicGather
+using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!, AbstractFixedEffectLinearMap, copy_internal!, AbsorptionPlan, AbsorbedBlock, block_width
 CUDA.allowscalar(false)
 
 ##############################################################################
 ##
-## Conversion FixedEffect between CPU and GPU
+## CUDA backend — same layout as src/CPU.jl and ext/MetalExt.jl:
+##   1. FixedEffectLinearMapCUDA: plan transfer, mul!, kernels;
+##   2. FixedEffectSolverCUDA: solver storage and interface.
+## The AbsorptionPlan (block transforms and whitened row values) is built on
+## the CPU; refs and qrows are moved to the device and consumed by fused
+## block kernels.
 ##
 ##############################################################################
 
-# https://github.com/JuliaGPU/CUDA.jl/issues/142
-function _cu(T::Type, fe::FixedEffect)
-	refs = CuArray(fe.refs)
-	interaction = _cu(T, fe.interaction)
-	FixedEffect{typeof(refs), typeof(interaction)}(refs, interaction, fe.n)
-end
+##############################################################################
+##
+## 1. FixedEffectLinearMapCUDA
+##
+##############################################################################
+
+## 1a) FixedEffectLinearMapCUDA Constructor
+
 _cu(T::Type, w::UnitWeights) = fill!(CuVector{T}(undef, length(w)), w[1])
 _cu(T::Type, w::AbstractVector) = CuVector{T}(convert(Vector{T}, w))
 
-##############################################################################
-##
-## FixedEffectLinearMap on the GPU (code by Paul Schrimpf)
-##
-## Model matrix of categorical variables
-## mutiplied by diag(1/sqrt(∑w * interaction^2, ..., ∑w * interaction^2) (Jacobi preconditoner)
-##
-## We define these methods used in lsmr! (duck typing):
-## eltype
-## size
-## mul!
-##
-##############################################################################
-
-mutable struct FixedEffectLinearMapCUDA{T} <: AbstractFixedEffectLinearMap{T}
+mutable struct FixedEffectLinearMapCUDA{T,P<:AbsorptionPlan} <: AbstractFixedEffectLinearMap{T}
 	fes::Vector{<:FixedEffect}
-	scales::Vector{<:AbstractVector}
-	caches::Vector{<:AbstractVector}
-	gathers::Vector{AtomicGather}
+	plan::P
 end
 
-function FixedEffectLinearMapCUDA{T}(fes::Vector{<:FixedEffect}) where {T}
-	fes = [_cu(T, fe) for fe in fes]
-	scales = [CUDA.zeros(T, fe.n) for fe in fes]
-	caches = [CUDA.zeros(T, length(fes[1].interaction)) for fe in fes]
-	gathers = [AtomicGather() for fe in fes]
-	return FixedEffectLinearMapCUDA{T}(fes, scales, caches, gathers)
+function FixedEffectLinearMapCUDA{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights) where {T}
+	plan = _cu_plan(T, fes, weights)
+	return FixedEffectLinearMapCUDA{T,typeof(plan)}(fes, plan)
 end
 
-function FixedEffects.gather!(fecoef::CuVector, refs::CuVector, α::Number, y::CuVector, cache::CuVector, ::AtomicGather)
-	nthreads = 256
-	nblocks = cld(length(y), nthreads)
-	@cuda threads=nthreads blocks=nblocks gather_kernel!(fecoef, refs, α, y, cache)
+function _cu_plan(::Type{T}, fes::Vector{<:FixedEffect}, weights::AbstractWeights) where {T}
+	cpu_plan = AbsorptionPlan(T, fes, weights)
+	blocks = [AbsorbedBlock(CuArray(block.refs), block.interactions, block.nlevels, block.input_terms)
+		for block in cpu_plan.blocks]
+	qrows = [CuArray(q) for q in cpu_plan.qrows]
+	return AbsorptionPlan(blocks, cpu_plan.transforms, cpu_plan.ranks, qrows)
 end
 
-function gather_kernel!(fecoef, refs, α, y, cache)
-	index = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
-	stride = blockDim().x * gridDim().x
-	i = index
-	@inbounds while i <= length(y)
-		CUDA.@atomic fecoef[refs[i]] += α * y[i] * cache[i]
-		i += stride
-	end
-end
+## 1b) FixedEffectLinearMapCUDA mul!
 
-function FixedEffects.scatter!(y::CuVector, α::Number, fecoef::CuVector, refs::CuVector, cache::CuVector)
-	nthreads = 256
-	nblocks = cld(length(y), nthreads)
-	@cuda threads=nthreads blocks=nblocks scatter_kernel!(y, α, fecoef, refs, cache)
-end
-
-function FixedEffects.scatter!(y::CuVector, α::Number, fecoef::CuVector, refs::CuVector, cache::CuVector, β::Number)
-	nthreads = 256
-	nblocks = cld(length(y), nthreads)
+## Implement right multiplication
+function LinearAlgebra.mul!(y::CuVector, fem::FixedEffectLinearMapCUDA{T},
+		fecoefs::FixedEffectCoefficients, α::Number, β::Number) where {T}
 	if iszero(β)
-		@cuda threads=nthreads blocks=nblocks scatter_kernel_zero!(y, α, fecoef, refs, cache)
-	elseif isone(β)
-		@cuda threads=nthreads blocks=nblocks scatter_kernel!(y, α, fecoef, refs, cache)
-	else
-		@cuda threads=nthreads blocks=nblocks scatter_kernel_scaled!(y, α, fecoef, refs, cache, β)
+		fill!(y, zero(T))
+		β = one(β)
 	end
+	for (coef_block, block, qrows) in zip(fecoefs.x, fem.plan.blocks, fem.plan.qrows)
+		_scatter_block!(y, block.refs, qrows, coef_block, α, β)
+		β = one(β)
+	end
+	return y
 end
 
-function scatter_kernel!(y, α, fecoef, refs, cache)
+function _scatter_block!(y::CuVector, refs::CuVector, qrows::CuMatrix,
+		coef_block::CuMatrix, α::Number, β::Number)
+	nthreads = 256
+	nblocks = cld(length(y), nthreads)
+	@cuda threads=nthreads blocks=nblocks scatter_block_kernel!(y, refs, qrows, coef_block, α, β, size(coef_block, 1))
+	return y
+end
+
+function scatter_block_kernel!(y, refs, qrows, coef_block, α, β, k)
 	index = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
 	i = index
 	@inbounds while i <= length(y)
-		y[i] += α * fecoef[refs[i]] * cache[i]
+		g = refs[i]
+		fit = zero(eltype(y))
+		for c in 1:k
+			fit += coef_block[c, g] * qrows[c, i]
+		end
+		y[i] = β * y[i] + α * fit
 		i += stride
 	end
+	return nothing
 end
 
-function scatter_kernel_zero!(y, α, fecoef, refs, cache)
+## 1c) FixedEffectLinearMapCUDA mul!, Adjoint
+
+## Implement left multiplication
+function LinearAlgebra.mul!(fecoefs::FixedEffectCoefficients,
+		Cfem::Adjoint{T, <:FixedEffectLinearMapCUDA{T}},
+		y::CuVector, α::Number, β::Number) where {T}
+	fem = adjoint(Cfem)
+	rmul!(fecoefs, β)
+	for (coef_block, block, qrows) in zip(fecoefs.x, fem.plan.blocks, fem.plan.qrows)
+		_gather_block!(coef_block, block.refs, qrows, y, α)
+	end
+	return fecoefs
+end
+
+function _gather_block!(coef_block::CuMatrix, refs::CuVector, qrows::CuMatrix,
+		y::CuVector, α::Number)
+	nthreads = 256
+	nblocks = cld(length(y), nthreads)
+	@cuda threads=nthreads blocks=nblocks gather_block_kernel!(coef_block, refs, qrows, y, α, size(coef_block, 1))
+	return coef_block
+end
+
+function gather_block_kernel!(coef_block, refs, qrows, y, α, k)
 	index = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
 	stride = blockDim().x * gridDim().x
 	i = index
 	@inbounds while i <= length(y)
-		y[i] = α * fecoef[refs[i]] * cache[i]
+		g = refs[i]
+		yi = α * y[i]
+		for c in 1:k
+			CUDA.@atomic coef_block[c, g] += yi * qrows[c, i]
+		end
 		i += stride
 	end
-end
-
-function scatter_kernel_scaled!(y, α, fecoef, refs, cache, β)
-	index = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
-	stride = blockDim().x * gridDim().x
-	i = index
-	@inbounds while i <= length(y)
-		y[i] = β * y[i] + α * fecoef[refs[i]] * cache[i]
-		i += stride
-	end
+	return nothing
 end
 
 ##############################################################################
 ##
-## Implement AbstractFixedEffectSolver interface
+## 2. FixedEffectSolverCUDA
 ##
 ##############################################################################
 
@@ -122,70 +131,29 @@ mutable struct FixedEffectSolverCUDA{T} <: FixedEffects.AbstractFixedEffectSolve
 	weights::CuVector{T}
 	b::CuVector{T}
 	r::CuVector{T}
-	x::FixedEffectCoefficients{<: AbstractVector{T}}
-	v::FixedEffectCoefficients{<: AbstractVector{T}}
-	h::FixedEffectCoefficients{<: AbstractVector{T}}
-	hbar::FixedEffectCoefficients{<: AbstractVector{T}}
+	x::FixedEffectCoefficients
+	v::FixedEffectCoefficients
+	h::FixedEffectCoefficients
+	hbar::FixedEffectCoefficients
 	tmp::Vector{T} # used to convert AbstractVector to Vector{T}
-	fes::Vector{<:FixedEffect}
 end
 
 function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::AbstractWeights, ::Type{Val{:CUDA}}) where {T}
-	m = FixedEffectLinearMapCUDA{T}(fes)
+	m = FixedEffectLinearMapCUDA{T}(fes, weights)
 	b = CUDA.zeros(T, length(weights))
 	r = CUDA.zeros(T, length(weights))
-	x = FixedEffectCoefficients([CUDA.zeros(T, fe.n) for fe in fes])
-	v = FixedEffectCoefficients([CUDA.zeros(T, fe.n) for fe in fes])
-	h = FixedEffectCoefficients([CUDA.zeros(T, fe.n) for fe in fes])
-	hbar = FixedEffectCoefficients([CUDA.zeros(T, fe.n) for fe in fes])
+	x = FixedEffectCoefficients([CUDA.zeros(T, block_width(block), block.nlevels) for block in m.plan.blocks])
+	v = FixedEffectCoefficients([CUDA.zeros(T, block_width(block), block.nlevels) for block in m.plan.blocks])
+	h = FixedEffectCoefficients([CUDA.zeros(T, block_width(block), block.nlevels) for block in m.plan.blocks])
+	hbar = FixedEffectCoefficients([CUDA.zeros(T, block_width(block), block.nlevels) for block in m.plan.blocks])
 	tmp = zeros(T, length(weights))
-	feM = FixedEffectSolverCUDA{T}(m, CUDA.zeros(T, length(weights)), b, r, x, v, h, hbar, tmp, fes)
-	FixedEffects.update_weights!(feM, weights)
+	return FixedEffectSolverCUDA{T}(m, _cu(T, weights), b, r, x, v, h, hbar, tmp)
 end
 
 function FixedEffects.update_weights!(feM::FixedEffectSolverCUDA{T}, weights::AbstractWeights) where {T}
 	copyto!(feM.weights, _cu(T, weights))
-	for (scale, fe) in zip(feM.m.scales, feM.m.fes)
-		scale!(scale, fe.refs, fe.interaction, feM.weights)
-	end
-	for (cache, scale, fe) in zip(feM.m.caches, feM.m.scales, feM.m.fes)
-		cache!(cache, fe.refs, fe.interaction, feM.weights, scale)
-	end	
+	feM.m.plan = _cu_plan(T, feM.m.fes, weights)
 	return feM
-end
-
-function scale!(scale::CuVector, refs::CuVector, interaction::CuVector, weights::CuVector)
-	nthreads = 256
-	nblocks = cld(length(refs), nthreads) 
-    fill!(scale, 0)
-	@cuda threads=nthreads blocks=nblocks scale_kernel!(scale, refs, interaction, weights)
-	map!(x -> x > 0 ? 1 / sqrt(x) : zero(eltype(scale)), scale, scale)
-end
-
-function scale_kernel!(scale, refs, interaction, weights)
-	index = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
-	stride = blockDim().x * gridDim().x
-	i = index
-	@inbounds while i <= length(interaction)
-		CUDA.@atomic scale[refs[i]] += abs2(interaction[i]) * weights[i]
-		i += stride
-	end
-end
-
-function cache!(cache::CuVector, refs::CuVector, interaction::CuVector, weights::CuVector, scale::CuVector)
-	nthreads = 256
-	nblocks = cld(length(cache), nthreads) 
-	@cuda threads=nthreads blocks=nblocks cache!_kernel!(cache, refs, interaction, weights, scale)
-end
-
-function cache!_kernel!(cache, refs, interaction, weights, scale)
-	index = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
-	stride = blockDim().x * gridDim().x
-	i = index
-	@inbounds while i <= length(cache)
-		cache[i] = interaction[i] * sqrt(weights[i]) * scale[refs[i]]
-		i += stride
-	end
 end
 
 function FixedEffects.copy_internal!(feM::FixedEffectSolverCUDA, field::Symbol, r::AbstractVector)
