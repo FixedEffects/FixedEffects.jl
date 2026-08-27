@@ -26,7 +26,7 @@
 # dispatched on by gather_block!.
 struct SerialGather end
 struct ThreadedGather{M<:AbstractMatrix}
-	buffers::Vector{M}              # one k × nlevels accumulator per thread
+	buffers::Vector{M}              # one k × n accumulator per thread
 	ranges::Vector{UnitRange{Int}}  # contiguous row chunks
 end
 
@@ -52,7 +52,7 @@ end
 # Toggle to force the serial baseline (e.g. for benchmarking); threading is on by default.
 const _USE_THREADED_GATHER = Ref(true)
 # Threading the gather pays off only when the nt per-thread accumulators of size
-# k × nlevels fit in cache; beyond that the fill/merge memory traffic dominates
+# k × n fit in cache; beyond that the fill/merge memory traffic dominates
 # and serial is faster.
 const _GATHER_BUFFER_BUDGET = 8 * 1024 * 1024   # bytes
 const _GATHER_MIN_ROWS = 100_000                # below this, threading overhead isn't worth it
@@ -62,8 +62,8 @@ function _gather_strategy(::Type{T}, block::AbsorbedBlock, N::Int, nt::Int,
 		ranges::Vector{UnitRange{Int}}) where {T}
 	k = block_width(block)
 	if _USE_THREADED_GATHER[] && nt > 1 && N >= _GATHER_MIN_ROWS &&
-			nt * k * block.nlevels * sizeof(T) <= _GATHER_BUFFER_BUDGET
-		return ThreadedGather([zeros(T, k, block.nlevels) for _ in 1:nt], ranges)
+			nt * k * block.n * sizeof(T) <= _GATHER_BUFFER_BUDGET
+		return ThreadedGather([zeros(T, k, block.n) for _ in 1:nt], ranges)
 	else
 		return SerialGather()
 	end
@@ -214,10 +214,10 @@ function AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, weights::Abstr
 	b = zeros(T, length(weights))
 	r = zeros(T, length(weights))
 	blocks = m.plan.blocks
-	x = FixedEffectCoefficients([zeros(T, block_width(block), block.nlevels) for block in blocks])
-	v = FixedEffectCoefficients([zeros(T, block_width(block), block.nlevels) for block in blocks])
-	h = FixedEffectCoefficients([zeros(T, block_width(block), block.nlevels) for block in blocks])
-	hbar = FixedEffectCoefficients([zeros(T, block_width(block), block.nlevels) for block in blocks])
+	x = FixedEffectCoefficients([zeros(T, block_width(block), block.n) for block in blocks])
+	v = FixedEffectCoefficients([zeros(T, block_width(block), block.n) for block in blocks])
+	h = FixedEffectCoefficients([zeros(T, block_width(block), block.n) for block in blocks])
+	hbar = FixedEffectCoefficients([zeros(T, block_width(block), block.n) for block in blocks])
 	return FixedEffectSolverCPU(m, weights, b, r, x, v, h, hbar)
 end
 

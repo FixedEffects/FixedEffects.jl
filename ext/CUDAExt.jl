@@ -37,7 +37,7 @@ end
 
 function _cu_plan(::Type{T}, fes::Vector{<:FixedEffect}, weights::AbstractWeights) where {T}
 	cpu_plan = AbsorptionPlan(T, fes, weights)
-	blocks = [AbsorbedBlock(CuArray(block.refs), block.interactions, block.nlevels, block.input_terms)
+	blocks = [AbsorbedBlock(CuArray(block.refs), block.interactions, block.n, block.input_terms)
 		for block in cpu_plan.blocks]
 	qrows = [CuArray(q) for q in cpu_plan.qrows]
 	return AbsorptionPlan(blocks, cpu_plan.transforms, cpu_plan.ranks, qrows)
@@ -142,10 +142,10 @@ function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, w
 	m = FixedEffectLinearMapCUDA{T}(fes, weights)
 	b = CUDA.zeros(T, length(weights))
 	r = CUDA.zeros(T, length(weights))
-	x = FixedEffectCoefficients([CUDA.zeros(T, block_width(block), block.nlevels) for block in m.plan.blocks])
-	v = FixedEffectCoefficients([CUDA.zeros(T, block_width(block), block.nlevels) for block in m.plan.blocks])
-	h = FixedEffectCoefficients([CUDA.zeros(T, block_width(block), block.nlevels) for block in m.plan.blocks])
-	hbar = FixedEffectCoefficients([CUDA.zeros(T, block_width(block), block.nlevels) for block in m.plan.blocks])
+	x = FixedEffectCoefficients([CUDA.zeros(T, block_width(block), block.n) for block in m.plan.blocks])
+	v = FixedEffectCoefficients([CUDA.zeros(T, block_width(block), block.n) for block in m.plan.blocks])
+	h = FixedEffectCoefficients([CUDA.zeros(T, block_width(block), block.n) for block in m.plan.blocks])
+	hbar = FixedEffectCoefficients([CUDA.zeros(T, block_width(block), block.n) for block in m.plan.blocks])
 	tmp = zeros(T, length(weights))
 	return FixedEffectSolverCUDA{T}(m, _cu(T, weights), b, r, x, v, h, hbar, tmp)
 end

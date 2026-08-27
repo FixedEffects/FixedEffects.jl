@@ -217,14 +217,14 @@ end
 # operator tests below are checked against.
 function project_block!(y::AbstractVector, block, transform, weights)
 	k = FixedEffects.block_width(block)
-	coef = zeros(k, block.nlevels)
+	coef = zeros(k, block.n)
 	for i in eachindex(y)
 		g = block.refs[i]
 		for c in 1:k
 			coef[c, g] += weights[i] * block.interactions[c][i] * y[i]
 		end
 	end
-	for g in 1:block.nlevels
+	for g in 1:block.n
 		R = transform[:, :, g]
 		coef[:, g] = R * (R' * coef[:, g])
 	end

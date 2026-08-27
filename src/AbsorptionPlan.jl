@@ -11,7 +11,7 @@
 struct AbsorbedBlock{R<:AbstractVector{<:Integer},I<:Tuple}
 	refs::R
 	interactions::I           # one column per term: 1, x, x^2, ...
-	nlevels::Int
+	n::Int                    # number of groups (= fe.n of the input terms)
 	input_terms::Vector{Int}  # indices into the original fes vector, one per column
 end
 
@@ -35,13 +35,13 @@ preconditioner.
 """
 struct AbsorptionPlan{B<:AbstractVector{<:AbsorbedBlock},TR<:AbstractVector,RA<:AbstractVector,RV<:AbstractVector}
 	blocks::B
-	transforms::TR            # per block: k × k × nlevels, R_g in columns 1:ranks[g]
+	transforms::TR            # per block: k × k × n, R_g in columns 1:ranks[g]
 	ranks::RA                 # per block: rank of each group's Gram matrix
 	qrows::RV                 # per block: k × nobs whitened rows sqrt(w) Z R
 end
 
 block_width(block::AbsorbedBlock) = length(block.interactions)
-_ncoef(plan::AbsorptionPlan) = sum(block_width(block) * block.nlevels for block in plan.blocks)
+_ncoef(plan::AbsorptionPlan) = sum(block_width(block) * block.n for block in plan.blocks)
 
 ## 1b) Constructors
 
@@ -62,7 +62,7 @@ end
 function _build_absorbed_blocks(fes::Vector{<:FixedEffect})
 	blocks = AbsorbedBlock[]
 	for (j, fe) in enumerate(fes)
-		block_id = findfirst(block -> block.nlevels == fe.n && block.refs == fe.refs, blocks)
+		block_id = findfirst(block -> block.n == fe.n && block.refs == fe.refs, blocks)
 		if block_id === nothing
 			push!(blocks, AbsorbedBlock(fe.refs, (fe.interaction,), fe.n, [j]))
 		else
@@ -70,7 +70,7 @@ function _build_absorbed_blocks(fes::Vector{<:FixedEffect})
 			interactions = (block.interactions..., fe.interaction)
 			input_terms = copy(block.input_terms)
 			push!(input_terms, j)
-			blocks[block_id] = AbsorbedBlock(block.refs, interactions, block.nlevels, input_terms)
+			blocks[block_id] = AbsorbedBlock(block.refs, interactions, block.n, input_terms)
 		end
 	end
 	return blocks
@@ -92,7 +92,7 @@ end
 function _build_block_transform(::Type{T}, block::AbsorbedBlock, weights::AbstractVector,
 		ranktol::Union{Nothing,Real}) where {T}
 	k = block_width(block)
-	nlevels = block.nlevels
+	nlevels = block.n
 	nobs = length(block.refs)
 	transforms = zeros(T, k, k, nlevels)
 	ranks = zeros(Int, nlevels)

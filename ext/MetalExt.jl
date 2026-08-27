@@ -50,7 +50,7 @@ function FixedEffectLinearMapMetal{T}(fes::Vector{<:FixedEffect}, weights::Abstr
 	gathers = Vector{G}(undef, length(plan.blocks))
 	Threads.@threads for i in 1:length(plan.blocks)
 		refs = fes[plan.blocks[i].input_terms[1]].refs
-		n = plan.blocks[i].nlevels
+		n = plan.blocks[i].n
 		# bucketize (one threadgroup per group) for low cardinality; else atomic adds
 		if n < min(100_000, div(length(refs), 16))
 			perm, offsets = bucketize_refs(refs, n)
@@ -64,7 +64,7 @@ end
 
 function _mtl_plan(::Type{T}, fes::Vector{<:FixedEffect}, weights::AbstractWeights) where {T}
 	cpu_plan = AbsorptionPlan(T, fes, weights)
-	blocks = [AbsorbedBlock(MtlArray(block.refs), block.interactions, block.nlevels, block.input_terms)
+	blocks = [AbsorbedBlock(MtlArray(block.refs), block.interactions, block.n, block.input_terms)
 		for block in cpu_plan.blocks]
 	qrows = [MtlArray(q) for q in cpu_plan.qrows]
 	return AbsorptionPlan(blocks, cpu_plan.transforms, cpu_plan.ranks, qrows)
@@ -241,10 +241,10 @@ function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, w
 	m = FixedEffectLinearMapMetal{T}(fes, weights)
 	b = Metal.zeros(T, length(weights))
 	r = Metal.zeros(T, length(weights))
-	x = FixedEffectCoefficients([Metal.zeros(T, block_width(block), block.nlevels) for block in m.plan.blocks])
-	v = FixedEffectCoefficients([Metal.zeros(T, block_width(block), block.nlevels) for block in m.plan.blocks])
-	h = FixedEffectCoefficients([Metal.zeros(T, block_width(block), block.nlevels) for block in m.plan.blocks])
-	hbar = FixedEffectCoefficients([Metal.zeros(T, block_width(block), block.nlevels) for block in m.plan.blocks])
+	x = FixedEffectCoefficients([Metal.zeros(T, block_width(block), block.n) for block in m.plan.blocks])
+	v = FixedEffectCoefficients([Metal.zeros(T, block_width(block), block.n) for block in m.plan.blocks])
+	h = FixedEffectCoefficients([Metal.zeros(T, block_width(block), block.n) for block in m.plan.blocks])
+	hbar = FixedEffectCoefficients([Metal.zeros(T, block_width(block), block.n) for block in m.plan.blocks])
 	tmp = zeros(T, length(weights))
 	return FixedEffectSolverMetal{T}(m, _mtl(T, weights), b, r, x, v, h, hbar, tmp)
 end

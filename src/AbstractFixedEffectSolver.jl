@@ -181,7 +181,7 @@ function recover_coefficients(::Type{T}, fes::Vector{<:FixedEffect}, plan::Absor
 	for (coef_block, block, transform) in zip(coef_blocks, plan.blocks, plan.transforms)
 		k = block_width(block)
 		β = zeros(T, k)
-		@inbounds for g in 1:block.nlevels
+		@inbounds for g in 1:block.n
 			for a in 1:k
 				s = zero(T)
 				for c in 1:k

@@ -1,7 +1,7 @@
 ##############################################################################
 ##
 ## FixedEffectCoefficients: the whitened coefficient vector x seen by lsmr!,
-## stored as one k × nlevels matrix per AbsorbedBlock (column g holds the
+## stored as one k × n matrix per AbsorbedBlock (column g holds the
 ## whitened coordinates of group g).
 ##
 ## We define the methods lsmr! needs (duck typing):
