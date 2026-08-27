@@ -41,7 +41,6 @@ struct AbsorptionPlan{B<:AbstractVector{<:AbsorbedBlock},TR<:AbstractVector,RA<:
 end
 
 block_width(block::AbsorbedBlock) = length(block.interactions)
-_ncoef(plan::AbsorptionPlan) = sum(block_width(block) * block.n for block in plan.blocks)
 
 ## 1b) Constructors
 
@@ -118,29 +117,78 @@ function _build_block_transform(::Type{T}, block::AbsorbedBlock, weights::Abstra
 			end
 		end
 		return transforms, ranks, qrows
-	end
-
-	counts, offsets, perm = _group_permutation(block.refs, nlevels)
-	maxrows = isempty(counts) ? 0 : maximum(counts)
-	if nthreads() > 1 && nobs >= 100_000
-		nchunks = max(1, min(nthreads(), nlevels))
-	else
-		nchunks = 1
-	end
-	chunks = _row_chunks(nlevels, nchunks)
-	if nchunks == 1
-		_build_block_transform_chunk!(transforms, ranks, qrows, block, weights,
-			ranktol, counts, offsets, perm, chunks[1], maxrows)
-	else
-		# Groups are disjoint row segments of perm, so chunks can be processed in parallel.
-		@sync for chunk in chunks
-			let chunk = chunk
-				Base.Threads.@spawn _build_block_transform_chunk!(transforms, ranks, qrows,
-					block, weights, ranktol, counts, offsets, perm, chunk, maxrows)
+	elseif k == 2 && count(interaction -> interaction isa UnitWeights, block.interactions) == 1
+		# Stable weighted moments avoid cancellation in within-group slope variation.
+		intercept = block.interactions[1] isa UnitWeights ? 1 : 2
+		slope = 3 - intercept
+		z = block.interactions[slope]
+		sumw = zeros(T, nlevels)
+		anchor = zeros(T, nlevels)
+		mean = zeros(T, nlevels)
+		m2 = zeros(T, nlevels)
+		@inbounds for i in eachindex(block.refs)
+			g = block.refs[i]
+			w = T(weights[i])
+			zi = T(z[i])
+			new_sumw = sumw[g] + w
+			if new_sumw > zero(T)
+				if iszero(sumw[g])
+					anchor[g] = zi
+				end
+				centered_z = zi - anchor[g]
+				delta = centered_z - mean[g]
+				new_mean = mean[g] + w * delta / new_sumw
+				m2[g] += w * delta * (centered_z - new_mean)
+				mean[g] = new_mean
+				sumw[g] = new_sumw
 			end
 		end
+
+		tol = ranktol === nothing ? T(2) * sqrt(eps(T)) : T(ranktol)
+		@inbounds for g in 1:nlevels
+			if sumw[g] > zero(T) && one(T) > tol
+				transforms[intercept, 1, g] = inv(sqrt(sumw[g]))
+				ranks[g] = 1
+			end
+			centered_sumsq = max(zero(T), m2[g])
+			group_mean = anchor[g] + mean[g]
+			slope_sumsq = centered_sumsq + sumw[g] * abs2(group_mean)
+			if ranks[g] == 1 && slope_sumsq > zero(T) &&
+					sqrt(centered_sumsq / slope_sumsq) > tol
+				transforms[slope, 2, g] = inv(sqrt(centered_sumsq))
+				transforms[intercept, 2, g] = -group_mean * transforms[slope, 2, g]
+				ranks[g] = 2
+			end
+		end
+		@inbounds for i in eachindex(block.refs)
+			g = block.refs[i]
+			sqrtw = sqrt(T(weights[i]))
+			qrows[1, i] = sqrtw * transforms[intercept, 1, g]
+			qrows[2, i] = sqrtw * (T(z[i]) - anchor[g] - mean[g]) * transforms[slope, 2, g]
+		end
+		return transforms, ranks, qrows
+	else
+		counts, offsets, perm = _group_permutation(block.refs, nlevels)
+		maxrows = isempty(counts) ? 0 : maximum(counts)
+		if nthreads() > 1 && nobs >= 100_000
+			nchunks = max(1, min(nthreads(), nlevels))
+		else
+			nchunks = 1
+		end
+		if nchunks == 1
+			_build_block_transform_chunk!(transforms, ranks, qrows, block, weights,
+				ranktol, counts, offsets, perm, 1:nlevels, maxrows)
+		else
+			# Groups are disjoint row segments of perm, so chunks can be processed in parallel.
+			@sync for chunk in _row_chunks(nlevels, nchunks)
+				let chunk = chunk
+					Base.Threads.@spawn _build_block_transform_chunk!(transforms, ranks, qrows,
+						block, weights, ranktol, counts, offsets, perm, chunk, maxrows)
+				end
+			end
+		end
+		return transforms, ranks, qrows
 	end
-	return transforms, ranks, qrows
 end
 
 function _build_block_transform_chunk!(transforms::AbstractArray{T,3}, ranks::AbstractVector{Int},
@@ -250,4 +298,3 @@ function _row_chunks(n::Int, k::Int)
 	end
 	return out
 end
-

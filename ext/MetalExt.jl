@@ -1,6 +1,6 @@
 module MetalExt
 using FixedEffects, Metal
-using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!, AbstractFixedEffectLinearMap, copy_internal!, AbsorptionPlan, AbsorbedBlock, block_width
+using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!, AbstractFixedEffectLinearMap, copy_internal!, AbsorptionPlan, AbsorbedBlock, _group_permutation, block_width
 Metal.allowscalar(false)
 
 ##############################################################################
@@ -34,8 +34,8 @@ end
 # bucketize (one threadgroup per group) for low cardinality, else atomic adds.
 struct AtomicGather end
 struct BucketGather{V<:AbstractVector}
-	perm::V        # observation indices sorted by group
-	offsets::V     # CSR offsets into perm (length ngroups + 1)
+	perm::V
+	offsets::V
 end
 
 mutable struct FixedEffectLinearMapMetal{T,P<:AbsorptionPlan} <: AbstractFixedEffectLinearMap{T}
@@ -48,18 +48,20 @@ function FixedEffectLinearMapMetal{T}(fes::Vector{<:FixedEffect}, weights::Abstr
 	plan = _mtl_plan(T, fes, weights)
 	G = Union{AtomicGather, BucketGather}
 	gathers = Vector{G}(undef, length(plan.blocks))
-	Threads.@threads for i in 1:length(plan.blocks)
+	for i in eachindex(plan.blocks)
 		refs = fes[plan.blocks[i].input_terms[1]].refs
-		n = plan.blocks[i].n
-		# bucketize (one threadgroup per group) for low cardinality; else atomic adds
-		if n < min(100_000, div(length(refs), 16))
-			perm, offsets = bucketize_refs(refs, n)
-			gathers[i] = BucketGather(perm, offsets)
-		else
-			gathers[i] = AtomicGather()
-		end
+		gathers[i] = _gather_strategy(refs, plan.blocks[i].n)
 	end
 	return FixedEffectLinearMapMetal{T,typeof(plan)}(fes, plan, gathers)
+end
+
+function _gather_strategy(refs::AbstractVector{<:Integer}, nlevels::Int)
+	if nlevels < min(100_000, div(length(refs), 16))
+		_, offsets, perm = _group_permutation(refs, nlevels)
+		return BucketGather(MtlVector{Int}(perm), MtlVector{Int}(offsets))
+	else
+		return AtomicGather()
+	end
 end
 
 function _mtl_plan(::Type{T}, fes::Vector{<:FixedEffect}, weights::AbstractWeights) where {T}
@@ -68,30 +70,6 @@ function _mtl_plan(::Type{T}, fes::Vector{<:FixedEffect}, weights::AbstractWeigh
 		for block in cpu_plan.blocks]
 	qrows = [MtlArray(q) for q in cpu_plan.qrows]
 	return AbsorptionPlan(blocks, cpu_plan.transforms, cpu_plan.ranks, qrows)
-end
-
-function bucketize_refs(refs::AbstractVector{<:Integer}, n::Int)
-	# count the number of obs per group
-	counts = zeros(Int, n)
-	@inbounds for r in refs
-		counts[r] += 1
-	end
-	# offsets is vcat(1, cumsum(counts))
-	offsets = Vector{Int}(undef, n + 1)
-	offsets[1] = 1
-	@inbounds for k in 1:n
-		offsets[k+1] = offsets[k] + counts[k]
-	end
-
-	perm = Vector{Int}(undef, length(refs))
-	next = offsets[1:n]
-	@inbounds for i in eachindex(refs)
-		r = refs[i]
-		p = next[r]
-		perm[p] = i
-		next[r] = p + 1
-	end
-	return MtlVector{Int}(perm), MtlVector{Int}(offsets)
 end
 
 ## 1b) FixedEffectLinearMapMetal mul!
