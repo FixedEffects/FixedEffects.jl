@@ -15,6 +15,12 @@ r_ols =  [-0.2015993617092453,  0.2015993617092464, -0.2015993617092463,  0.2015
 (r, iter, conv) = solve_residuals!(deepcopy(x), fes)
 @test r ≈ r_ols
 
+# a zero right-hand side converges immediately
+(rz, iterz, convz) = solve_residuals!(zeros(10), fes)
+@test convz
+@test iterz == 0
+@test all(iszero, rz)
+
 @testset "maxiter semantics" begin
 	(r0, iter0, conv0) = @test_logs (:warn, r"solve_residuals!") solve_residuals!(deepcopy(x), fes; maxiter = 0)
 	@test iter0 == 0

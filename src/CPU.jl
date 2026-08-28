@@ -194,6 +194,129 @@ end
 
 ##############################################################################
 ##
+## 1d) Fused bidiagonalization step (single-pass LSMR iterations)
+##
+## u ← A v + c u, β = ‖u‖, g ← A'u — in as few passes over u as the gather
+## strategies allow. The mul!-based lsmr! iteration streams u about seven
+## times (one scatter per block, each reading and writing all of u, a norm
+## pass, a scale pass, one gather read per block); here the scatters of every
+## block, the norm, and — when every block has cache-resident per-thread
+## buffers — the gathers all run inside one loop over observations, so u and
+## refs/qrows are streamed once per iteration.
+##
+## Blocks are passed as tuples: the recursive helpers unroll across blocks and
+## the per-column loops stay compile-time (block_width, as in the kernels
+## above). Building the tuples is dynamic, but it happens once per call and
+## the kernels behind the function barrier specialize.
+##
+##############################################################################
+
+function bidiag_forward!(u::Vector{T}, g::FixedEffectCoefficients, fem::FixedEffectLinearMapCPU{T},
+		v::FixedEffectCoefficients, c::Number) where {T}
+	fill!(g, zero(T))
+	blocks = Tuple(fem.plan.blocks)
+	qrowss = Tuple(fem.plan.qrows)
+	vs = Tuple(v.x)
+	gs = Tuple(g.x)
+	N = length(u)
+	nt = nthreads()
+	if nt > 1 && N >= _GATHER_MIN_ROWS && all(gather -> gather isa ThreadedGather, fem.gathers)
+		# fully fused: each thread owns a row chunk and accumulates every
+		# block's gather into its private buffers, plus a norm partial
+		gathers = Tuple(fem.gathers)
+		ranges = first(gathers).ranges
+		partials = Vector{Float64}(undef, length(ranges))
+		@threads for t in eachindex(ranges)
+			bufs = map(gather -> gather.buffers[t], gathers)
+			foreach(buf -> fill!(buf, zero(T)), bufs)
+			partials[t] = _bidiag_chunk!(u, bufs, blocks, qrowss, vs, T(c), ranges[t])
+		end
+		@inbounds for (coef_block, gather) in zip(g.x, fem.gathers)
+			for buf in gather.buffers
+				@simd for idx in eachindex(coef_block)
+					coef_block[idx] += buf[idx]
+				end
+			end
+		end
+		s = sum(partials)
+	elseif nt > 1 && N >= _GATHER_MIN_ROWS
+		# fused scatters + norm in one threaded pass; the gathers of each
+		# block then run through their existing strategies on the raw u
+		ranges = _row_chunks(N, nt)
+		partials = Vector{Float64}(undef, length(ranges))
+		@threads for t in eachindex(ranges)
+			partials[t] = _bidiag_scatter_chunk!(u, blocks, qrowss, vs, T(c), ranges[t])
+		end
+		s = sum(partials)
+		for (coef_block, block, qrows, gather) in zip(g.x, fem.plan.blocks, fem.plan.qrows, fem.gathers)
+			gather_block!(coef_block, block, qrows, u, one(T), gather)
+		end
+	else
+		# serial: everything in one pass, gathers accumulated directly into g
+		s = _bidiag_chunk!(u, gs, blocks, qrowss, vs, T(c), eachindex(u))
+	end
+	return T(sqrt(s))
+end
+
+# u[i] ← c * u[i] + Σ_blocks fit_i; accumulates each block's gather into
+# `bufs` (g's own blocks when serial, one thread's private buffers when
+# threaded) and returns the Float64 sum of squares of the updated u.
+function _bidiag_chunk!(u::Vector{T}, bufs::Tuple, blocks::Tuple, qrowss::Tuple, vs::Tuple,
+		c::T, range) where {T}
+	s = 0.0
+	@inbounds for i in range
+		ui = c * u[i] + _scatter_fit(blocks, qrowss, vs, i)
+		u[i] = ui
+		s += abs2(Float64(ui))
+		_gather_accum!(bufs, blocks, qrowss, i, ui)
+	end
+	return s
+end
+
+function _bidiag_scatter_chunk!(u::Vector{T}, blocks::Tuple, qrowss::Tuple, vs::Tuple,
+		c::T, range) where {T}
+	s = 0.0
+	@inbounds for i in range
+		ui = c * u[i] + _scatter_fit(blocks, qrowss, vs, i)
+		u[i] = ui
+		s += abs2(Float64(ui))
+	end
+	return s
+end
+
+# Recursion over the block tuples: each level specializes on its block type,
+# so the inner loops over columns unroll (block_width is compile-time).
+@inline _scatter_fit(::Tuple{}, ::Tuple{}, ::Tuple{}, i) = false   # additive zero of any float type
+@inline function _scatter_fit(blocks::Tuple, qrowss::Tuple, vs::Tuple, i)
+	block = first(blocks)
+	qrows = first(qrowss)
+	vcoef = first(vs)
+	@inbounds begin
+		gr = block.refs[i]
+		fit = zero(eltype(qrows))
+		for col in 1:block_width(block)
+			fit += vcoef[col, gr] * qrows[col, i]
+		end
+	end
+	return fit + _scatter_fit(Base.tail(blocks), Base.tail(qrowss), Base.tail(vs), i)
+end
+
+@inline _gather_accum!(::Tuple{}, ::Tuple{}, ::Tuple{}, i, ui) = nothing
+@inline function _gather_accum!(bufs::Tuple, blocks::Tuple, qrowss::Tuple, i, ui)
+	buf = first(bufs)
+	block = first(blocks)
+	qrows = first(qrowss)
+	@inbounds begin
+		gr = block.refs[i]
+		for col in 1:block_width(block)
+			buf[col, gr] += ui * qrows[col, i]
+		end
+	end
+	return _gather_accum!(Base.tail(bufs), Base.tail(blocks), Base.tail(qrowss), i, ui)
+end
+
+##############################################################################
+##
 ## 2. FixedEffectSolverCPU
 ##
 ##############################################################################
