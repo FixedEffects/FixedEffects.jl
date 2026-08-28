@@ -12,6 +12,10 @@ Metal.allowscalar(false)
 ## the CPU; refs and qrows are moved to the device and consumed by fused
 ## block kernels.
 ##
+## Kernels are launched asynchronously — Metal.jl queues them in order on its
+## command queue — and the host waits only where it reads a result (the norm
+## in bidiag_forward!, the host copies in copy_internal!).
+##
 ##############################################################################
 
 ##############################################################################
@@ -28,6 +32,24 @@ _mtl(T::Type, w::AbstractVector) = MtlVector{T}(convert(Vector{T}, w))
 function _metal_threadgroup_width()
 	width = Int(device().maxThreadsPerThreadgroup.width)
 	return prevpow(2, width)
+end
+
+# Largest power-of-two threadgroup width the compiled pipeline allows: kernels
+# with heavy register use can cap below the device width.
+_pipeline_width(kernel) = prevpow(2, Int(kernel.pipeline.maxTotalThreadsPerThreadgroup))
+
+# Compile a kernel whose threadgroup width is also a compile-time argument
+# (the shared-memory tree size, passed as Val): if the compiled pipeline
+# allows fewer threads than requested, shrink the width and compile once more
+# (a smaller threadgroup only relaxes the pipeline limits, so this converges).
+function _sized_kernel(build, nthreads::Int)
+	kernel = build(nthreads)
+	cap = _pipeline_width(kernel)
+	if cap < nthreads
+		nthreads = cap
+		kernel = build(nthreads)
+	end
+	return kernel, nthreads
 end
 
 # Per-block plan for the adjoint gather (A'u), chosen once at construction:
@@ -90,9 +112,10 @@ end
 
 function _scatter_block!(y::MtlVector, refs::MtlVector, qrows::MtlMatrix,
 		coef_block::MtlMatrix, α::Number, β::Number)
-	nthreads = _metal_threadgroup_width()
-	nblocks = cld(length(y), nthreads)
-	Metal.@sync @metal threads=nthreads groups=nblocks scatter_block_kernel!(y, refs, qrows, coef_block, α, β, size(coef_block, 1))
+	kernel = @metal launch=false scatter_block_kernel!(y, refs, qrows, coef_block, α, β, size(coef_block, 1))
+	nthreads = _pipeline_width(kernel)
+	kernel(y, refs, qrows, coef_block, α, β, size(coef_block, 1);
+		threads = nthreads, groups = cld(length(y), nthreads))
 	return y
 end
 
@@ -127,17 +150,21 @@ end
 
 function _gather_block!(coef_block::MtlMatrix, refs::MtlVector, qrows::MtlMatrix,
 		y::MtlVector, α::Number, gather::BucketGather)
-	n = size(coef_block, 2)
-	nthreads = _metal_threadgroup_width()
-	Metal.@sync @metal threads=nthreads groups=n gather_block_kernel_bin!(coef_block, α, y, qrows, gather.perm, gather.offsets, Val(nthreads), size(coef_block, 1))
+	k = size(coef_block, 1)
+	kernel, nthreads = _sized_kernel(_metal_threadgroup_width()) do nt
+		@metal launch=false gather_block_kernel_bin!(coef_block, α, y, qrows, gather.perm, gather.offsets, Val(nt), k)
+	end
+	kernel(coef_block, α, y, qrows, gather.perm, gather.offsets, Val(nthreads), k;
+		threads = nthreads, groups = size(coef_block, 2))
 	return coef_block
 end
 
 function _gather_block!(coef_block::MtlMatrix, refs::MtlVector, qrows::MtlMatrix,
 		y::MtlVector, α::Number, ::AtomicGather)
-	nthreads = _metal_threadgroup_width()
-	nblocks = cld(length(y), nthreads)
-	Metal.@sync @metal threads=nthreads groups=nblocks gather_block_kernel!(coef_block, refs, α, y, qrows, size(coef_block, 1))
+	kernel = @metal launch=false gather_block_kernel!(coef_block, refs, α, y, qrows, size(coef_block, 1))
+	nthreads = _pipeline_width(kernel)
+	kernel(coef_block, refs, α, y, qrows, size(coef_block, 1);
+		threads = nthreads, groups = cld(length(y), nthreads))
 	return coef_block
 end
 
@@ -197,6 +224,87 @@ end
 
 ##############################################################################
 ##
+## 1d) Fused bidiagonalization step (single-pass LSMR iterations)
+##
+## One kernel computes u ← Σ_blocks A_b v_b + c u and accumulates ‖u‖² on the
+## fly: one partial per threadgroup, summed pairwise on the device — Metal has
+## no Float64 atomics, and the pairwise sum avoids the drift of chaining
+## Float32 atomic adds (see the _norm2 note in src/utils/lsmr.jl). The gathers
+## then run through their per-block strategies on the raw u. Blocks are passed
+## as tuples of device arrays so the kernel unrolls across them.
+##
+##############################################################################
+
+function FixedEffects.bidiag_forward!(u::MtlVector{T}, g::FixedEffectCoefficients,
+		fem::FixedEffectLinearMapMetal{T}, v::FixedEffectCoefficients, c::Number) where {T}
+	blocks = Tuple(fem.plan.blocks)
+	refss = map(block -> block.refs, blocks)
+	qrowss = Tuple(fem.plan.qrows)
+	vs = Tuple(v.x)
+	# fixed 256-thread groups, safely below any pipeline cap for this kernel
+	nthreads = 256
+	nblocks = cld(length(u), nthreads)
+	partials = MtlVector{T}(undef, nblocks)
+	@metal threads=nthreads groups=nblocks bidiag_scatter_kernel!(u, refss, qrowss, vs, T(c),
+		partials, Val(nthreads))
+	fill!(g, zero(T))
+	for (coef_block, block, qrows, gather) in zip(g.x, fem.plan.blocks, fem.plan.qrows, fem.gathers)
+		_gather_block!(coef_block, block.refs, qrows, u, one(T), gather)
+	end
+	# every kernel of this iteration is queued in order; the scalar read of the
+	# device sum below is the one host wait per iteration
+	return sqrt(sum(partials))
+end
+
+function bidiag_scatter_kernel!(u, refss, qrowss, vs, c, partials, ::Val{NT}) where {NT}
+	T = eltype(u)
+	gid = Int(threadgroup_position_in_grid().x)
+	tid = Int(thread_position_in_threadgroup().x)
+	nt = Int(threads_per_threadgroup().x)
+	shared = Metal.MtlThreadGroupArray(T, NT)
+	acc = zero(T)
+	i = thread_position_in_grid_1d()
+	if i <= length(u)
+		@inbounds begin
+			ui = c * u[i] + _device_fit(refss, qrowss, vs, i)
+			u[i] = ui
+			acc += ui * ui
+		end
+	end
+	@inbounds shared[tid] = acc
+	Metal.threadgroup_barrier(Metal.MemoryFlagThreadGroup)
+
+	offset = nt ÷ 2
+	while offset > 0
+		if tid <= offset
+			@inbounds shared[tid] += shared[tid + offset]
+		end
+		Metal.threadgroup_barrier(Metal.MemoryFlagThreadGroup)
+		offset ÷= 2
+	end
+
+	if tid == 1
+		@inbounds partials[gid] = shared[1]
+	end
+	return nothing
+end
+
+# Recursion over the block tuples, as in the CPU kernels.
+@inline _device_fit(::Tuple{}, ::Tuple{}, ::Tuple{}, i) = false
+@inline function _device_fit(refss::Tuple, qrowss::Tuple, vs::Tuple, i)
+	refs = first(refss)
+	qrows = first(qrowss)
+	vcoef = first(vs)
+	@inbounds gr = refs[i]
+	fit = zero(eltype(qrows))
+	for col in 1:size(qrows, 1)
+		@inbounds fit += vcoef[col, gr] * qrows[col, i]
+	end
+	return fit + _device_fit(Base.tail(refss), Base.tail(qrowss), Base.tail(vs), i)
+end
+
+##############################################################################
+##
 ## 2. FixedEffectSolverMetal
 ##
 ##############################################################################
@@ -210,6 +318,7 @@ mutable struct FixedEffectSolverMetal{T} <: FixedEffects.AbstractFixedEffectSolv
 	v::FixedEffectCoefficients
 	h::FixedEffectCoefficients
 	hbar::FixedEffectCoefficients
+	g::FixedEffectCoefficients
 	tmp::Vector{T}
 end
 
@@ -223,8 +332,9 @@ function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, w
 	v = FixedEffectCoefficients([Metal.zeros(T, block_width(block), block.n) for block in m.plan.blocks])
 	h = FixedEffectCoefficients([Metal.zeros(T, block_width(block), block.n) for block in m.plan.blocks])
 	hbar = FixedEffectCoefficients([Metal.zeros(T, block_width(block), block.n) for block in m.plan.blocks])
+	g = FixedEffectCoefficients([Metal.zeros(T, block_width(block), block.n) for block in m.plan.blocks])
 	tmp = zeros(T, length(weights))
-	return FixedEffectSolverMetal{T}(m, _mtl(T, weights), b, r, x, v, h, hbar, tmp)
+	return FixedEffectSolverMetal{T}(m, _mtl(T, weights), b, r, x, v, h, hbar, g, tmp)
 end
 
 

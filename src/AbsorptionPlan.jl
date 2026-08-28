@@ -58,6 +58,62 @@ function AbsorptionPlan(::Type{T}, plan::AbsorptionPlan, weights::AbstractVector
 	return AbsorptionPlan(plan.blocks, transforms, ranks, qrows)
 end
 
+## 1b') Sorted observation layout
+
+# Sorting observations by one block's groups turns that block's random
+# coefficient accesses into streams in every scatter/gather, and lets
+# its gather run race-free without per-thread buffers (row chunks can end on
+# group boundaries). Sorting pays once the block's coefficient tile outgrows
+# the caches; below this threshold it is skipped. Set to 0 to force sorting
+# (used by the tests).
+const _SORT_TILE_BYTES = Ref(1024 * 1024)
+
+# Build the plan on a sorted observation order: pick the block with the
+# largest coefficient tile (the largest random-access working set) and, when
+# its refs are unsorted and that tile is large enough to matter, permute every
+# block's refs and interactions, and the weights, by its counting-sort order.
+# Returns (plan, perm, sorted_block):
+# perm is nothing when the observations were not permuted (sorted_block may
+# still name an already-sorted block; 0 when none is sorted). Callers must
+# permute solver-side observation data (weights, right-hand sides) with perm.
+function sorted_absorption_plan(::Type{T}, fes::Vector{<:FixedEffect}, weights::AbstractVector;
+		ranktol::Union{Nothing,Real} = nothing) where {T}
+	blocks = _build_absorbed_blocks(fes)
+	perm = nothing
+	sorted_block = 0
+	# with a single block the solvers use one direct projection: no iterations
+	# to speed up, so sorting would only add the permutation passes
+	if length(blocks) > 1
+		j = argmax([block_width(block) * block.n for block in blocks])
+		if block_width(blocks[j]) * blocks[j].n * sizeof(T) > _SORT_TILE_BYTES[]
+			if issorted(blocks[j].refs)
+				sorted_block = j
+			else
+				_, _, perm = _group_permutation(blocks[j].refs, blocks[j].n)
+				blocks = [_permute_block(block, perm) for block in blocks]
+				weights = _permute_weights(weights, perm)
+				sorted_block = j
+			end
+		end
+	end
+	transforms, ranks, qrows = _build_transforms(T, blocks, weights, ranktol)
+	return AbsorptionPlan(blocks, transforms, ranks, qrows), perm, sorted_block
+end
+
+function _permute_block(block::AbsorbedBlock, perm::Vector{Int})
+	interactions = map(block.interactions) do interaction
+		if interaction isa UnitWeights
+			interaction
+		else
+			interaction[perm]
+		end
+	end
+	return AbsorbedBlock(block.refs[perm], interactions, block.n, block.input_terms)
+end
+
+_permute_weights(weights::UnitWeights, ::Vector{Int}) = weights
+_permute_weights(weights::AbstractVector, perm::Vector{Int}) = weights[perm]
+
 function _build_absorbed_blocks(fes::Vector{<:FixedEffect})
 	blocks = AbsorbedBlock[]
 	for (j, fe) in enumerate(fes)

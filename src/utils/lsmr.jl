@@ -57,11 +57,18 @@ _norm2(x) = norm(x)
 
 
 ## Arguments:
-## x is initial guess for x0. Transformed in place to the solution.
-## b is also transformed in place
-## v, h, hbar are storage arrays of length size(A, 2)
-function lsmr!(x, A, b, v, h, hbar; 
-    atol::Number = 1e-6, btol::Number = 1e-6, conlim::Number = 1e8, 
+## x must be zero on entry (the solvers fill! it before calling); transformed
+## in place to the solution.
+## b is also transformed in place: it holds the UNNORMALIZED Golub-Kahan
+## vector u, i.e. u_true = u / β. Folding the 1/β into the scalar recurrences
+## lets bidiag_forward! run a whole iteration in a single pass over u: the
+## norm of the new u and the gather A'u are accumulated in the same loop that
+## builds it, which is valid because the gather is linear: A'(u/β) = (A'u)/β.
+## In exact arithmetic the iterates are identical to textbook LSMR.
+## v, h, hbar, g are storage arrays of length size(A, 2); g receives A'u
+## each iteration
+function lsmr!(x, A, b, v, h, hbar, g;
+    atol::Number = 1e-6, btol::Number = 1e-6, conlim::Number = 1e8,
     maxiter::Integer = max(size(A,1), size(A,2)), λ::Number = 0)
 
     # Sanity-checking
@@ -72,18 +79,22 @@ function lsmr!(x, A, b, v, h, hbar;
     length(v) == n || error("v has length $(length(v)) but should have length $n")
     length(h) == n || error("h has length $(length(h)) but should have length $n")
     length(hbar) == n || error("hbar has length $(length(hbar)) but should have length $n")
+    length(g) == n || error("g has length $(length(g)) but should have length $n")
     length(b) == m || error("b has length $(length(b)) but should have length $m")
-    
+
     T = Base.promote_op(/, eltype(b), eltype(A))
     Tr = real(T)
     conlim > 0 ? ctol = convert(Tr, inv(conlim)) : ctol = zero(Tr)
-    # form the first vectors u and v (satisfy  β*u = b,  α*v = A'u)    
-    u = mul!(b, A, x, -1, 1)
-    β = _norm2(u)    
-    β > 0 && rmul!(u, inv(β))    
-    mul!(v, A', u, 1, 0)
-    α = _norm2(v)
-    α > 0 && rmul!(v, inv(α))
+    # form the first vectors u and v (satisfy  β*u = b,  α*v = A'u)
+    u = b
+    β = _norm2(u)
+    α = zero(Tr)
+    if β > 0
+        mul!(v, A', u, 1, 0)
+        rmul!(v, inv(β))
+        α = _norm2(v)
+        α > 0 && rmul!(v, inv(α))
+    end
     # Initialize variables for 1st iteration.
     ζbar = α * β
     αbar = α
@@ -116,18 +127,22 @@ function lsmr!(x, A, b, v, h, hbar;
     normAr = α * β
     iter = 0
     # Exit if b = 0 or A'b = 0.
-    if normAr != 0 
+    if normAr != 0
         while iter < maxiter
             iter += 1
-            mul!(u, A, v, 1, -α)
-            β = _norm2(u)
+            # u ← A v − α u_true, with the 1/β normalization of the stored u
+            # folded into the scalar; one fused pass also returns ‖u‖ and
+            # fills g = A'u (see bidiag_forward!)
+            cu = β > 0 ? -α / β : zero(Tr)
+            β = bidiag_forward!(u, g, A, v, cu)
             if β > 0
-                rmul!(u, inv(β))
-                mul!(v, A', u, 1, -β)
+                # v ← A'(u/β) − β v = g/β − β v, then normalize
+                rmul!(v, -β)
+                axpy!(inv(β), g, v)
                 α = _norm2(v)
                 α > 0 && rmul!(v, inv(α))
             end
-        
+
             # Construct rotation Qhat_{k,2k+1}.
             αhat = sqrt(abs2(αbar) + abs2(λ))
             chat = αbar / αhat
@@ -238,5 +253,21 @@ function lsmr!(x, A, b, v, h, hbar;
     tol = (atol, btol, ctol)
     ch = ConvergenceHistory(converged, tol, iter, nothing)
     return x, ch
+end
+
+# One fused Golub-Kahan step: u ← A v + c u, then β = ‖u‖ and g ← A'u (u left
+# unnormalized — lsmr! folds the 1/β into its scalars). This fallback uses the
+# operator's mul!; backends may override it with a true single-pass
+# implementation (see src/CPU.jl).
+function bidiag_forward!(u, g, A, v, c)
+    mul!(u, A, v, 1, c)
+    β = _norm2(u)
+    if β > 0
+        # accumulate into zeroed g rather than mul!(g, A', u, 1, 0): the
+        # adjoint mul! scales g by β first, and g is uninitialized on entry
+        fill!(g, zero(eltype(g)))
+        mul!(g, A', u, 1, 1)
+    end
+    return β
 end
 
