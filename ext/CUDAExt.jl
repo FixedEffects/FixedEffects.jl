@@ -190,6 +190,82 @@ end
 
 ##############################################################################
 ##
+## 1d) Fused bidiagonalization step (single-pass LSMR iterations)
+##
+## One kernel computes u ← Σ_blocks A_b v_b + c u and accumulates ‖u‖² on the
+## fly: block-reduced in the working precision, then one Float64 atomic per
+## thread block so the cross-block sum does not drift (see the _norm2 note in
+## src/utils/lsmr.jl). This replaces one scatter launch per block plus a
+## separate norm reduction; the gathers then run through their per-block
+## strategies on the raw u. Blocks are passed as tuples of device arrays so
+## the kernel unrolls across them.
+##
+##############################################################################
+
+function FixedEffects.bidiag_forward!(u::CuVector{T}, g::FixedEffectCoefficients,
+		fem::FixedEffectLinearMapCUDA{T}, v::FixedEffectCoefficients, c::Number) where {T}
+	blocks = Tuple(fem.plan.blocks)
+	refss = map(block -> block.refs, blocks)
+	qrowss = Tuple(fem.plan.qrows)
+	vs = Tuple(v.x)
+	normacc = CUDA.zeros(Float64, 1)
+	nthreads = 256
+	nblocks = cld(length(u), nthreads)
+	@cuda threads=nthreads blocks=nblocks bidiag_scatter_kernel!(u, refss, qrowss, vs, T(c),
+		normacc, Val(nthreads))
+	fill!(g, zero(T))
+	for (coef_block, block, qrows, gather) in zip(g.x, fem.plan.blocks, fem.plan.qrows, fem.gathers)
+		_gather_block!(coef_block, block.refs, qrows, u, one(T), gather)
+	end
+	return T(sqrt(Array(normacc)[1]))
+end
+
+function bidiag_scatter_kernel!(u, refss, qrowss, vs, c, normacc, ::Val{NT}) where {NT}
+	T = eltype(u)
+	tid = Int(threadIdx().x)
+	shared = CUDA.CuStaticSharedArray(T, NT)
+	index = (Int(blockIdx().x) - 1) * NT + tid
+	stride = NT * Int(gridDim().x)
+	acc = zero(T)
+	i = index
+	@inbounds while i <= length(u)
+		ui = c * u[i] + _device_fit(refss, qrowss, vs, i)
+		u[i] = ui
+		acc += ui * ui
+		i += stride
+	end
+	@inbounds shared[tid] = acc
+	CUDA.sync_threads()
+	offset = NT ÷ 2
+	while offset > 0
+		if tid <= offset
+			@inbounds shared[tid] += shared[tid + offset]
+		end
+		CUDA.sync_threads()
+		offset ÷= 2
+	end
+	if tid == 1
+		CUDA.@atomic normacc[1] += Float64(shared[1])
+	end
+	return nothing
+end
+
+# Recursion over the block tuples, as in the CPU kernels.
+@inline _device_fit(::Tuple{}, ::Tuple{}, ::Tuple{}, i) = false
+@inline function _device_fit(refss::Tuple, qrowss::Tuple, vs::Tuple, i)
+	refs = first(refss)
+	qrows = first(qrowss)
+	vcoef = first(vs)
+	@inbounds gr = refs[i]
+	fit = zero(eltype(qrows))
+	for col in 1:size(qrows, 1)
+		@inbounds fit += vcoef[col, gr] * qrows[col, i]
+	end
+	return fit + _device_fit(Base.tail(refss), Base.tail(qrowss), Base.tail(vs), i)
+end
+
+##############################################################################
+##
 ## 2. FixedEffectSolverCUDA
 ##
 ##############################################################################
@@ -203,6 +279,7 @@ mutable struct FixedEffectSolverCUDA{T} <: FixedEffects.AbstractFixedEffectSolve
 	v::FixedEffectCoefficients
 	h::FixedEffectCoefficients
 	hbar::FixedEffectCoefficients
+	g::FixedEffectCoefficients
 	tmp::Vector{T} # used to convert AbstractVector to Vector{T}
 end
 
@@ -214,8 +291,9 @@ function FixedEffects.AbstractFixedEffectSolver{T}(fes::Vector{<:FixedEffect}, w
 	v = FixedEffectCoefficients([CUDA.zeros(T, block_width(block), block.n) for block in m.plan.blocks])
 	h = FixedEffectCoefficients([CUDA.zeros(T, block_width(block), block.n) for block in m.plan.blocks])
 	hbar = FixedEffectCoefficients([CUDA.zeros(T, block_width(block), block.n) for block in m.plan.blocks])
+	g = FixedEffectCoefficients([CUDA.zeros(T, block_width(block), block.n) for block in m.plan.blocks])
 	tmp = zeros(T, length(weights))
-	return FixedEffectSolverCUDA{T}(m, _cu(T, weights), b, r, x, v, h, hbar, tmp)
+	return FixedEffectSolverCUDA{T}(m, _cu(T, weights), b, r, x, v, h, hbar, g, tmp)
 end
 
 function FixedEffects.update_weights!(feM::FixedEffectSolverCUDA{T}, weights::AbstractWeights) where {T}

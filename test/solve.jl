@@ -131,6 +131,72 @@ end
 	end
 end
 
+@testset "sorted observation layout" begin
+	n_sort = 150_000
+	id_low = mod1.(1:n_sort, 13)
+	id_high = mod1.(37 .* (1:n_sort) .+ 11, 257)
+	y_sort = sin.((1:n_sort) ./ 5) .+ cos.((1:n_sort) ./ 17)
+	weights_sort = Weights(1 .+ mod.(1:n_sort, 9) ./ 20)
+	fes_sort = [FixedEffect(id_low), FixedEffect(id_high)]
+	n_gpu = 2048
+	p1_gpu = mod1.(1:n_gpu, 32)
+	p2_gpu = mod1.((1:n_gpu) .* 7, 41)
+	x_gpu = sin.((1:n_gpu) ./ 3) .+ cos.((1:n_gpu) ./ 11)
+	weights_gpu = Weights(1 .+ mod.(1:n_gpu, 5) ./ 10)
+	fes_gpu = [FixedEffect(p1_gpu), FixedEffect(p2_gpu)]
+	atol_gpu = 1e-3
+	rtol_gpu = 1e-3
+	old_sort_tile = FixedEffects._SORT_TILE_BYTES[]
+	try
+		FixedEffects._SORT_TILE_BYTES[] = typemax(Int)
+		r_unsorted = solve_residuals!(copy(y_sort), fes_sort, weights_sort)[1]
+		coefs_unsorted = solve_coefficients!(copy(y_sort), fes_sort, weights_sort)[1]
+
+		FixedEffects._SORT_TILE_BYTES[] = 0
+		plan_sort, perm_sort, sorted_block = FixedEffects.sorted_absorption_plan(Float64, fes_sort, weights_sort)
+		@test perm_sort !== nothing
+		@test sorted_block == 2
+		@test issorted(plan_sort.blocks[sorted_block].refs)
+
+		r_sorted = solve_residuals!(copy(y_sort), fes_sort, weights_sort)[1]
+		@test r_sorted ≈ r_unsorted atol = 1e-8
+
+		coefs_sorted = solve_coefficients!(copy(y_sort), fes_sort, weights_sort)[1]
+		@test _residual_from_coefs(y_sort, fes_sort, coefs_sorted) ≈
+			_residual_from_coefs(y_sort, fes_sort, coefs_unsorted) atol = 1e-8
+
+		feM_sort = FixedEffects.AbstractFixedEffectSolver{Float64}(fes_sort, weights_sort, Val{:cpu})
+		@test feM_sort.perm !== nothing
+		new_weights_sort = Weights(1 .+ mod.(3 .* (1:n_sort), 11) ./ 15)
+		FixedEffects.update_weights!(feM_sort, new_weights_sort)
+		r_reused = solve_residuals!(copy(y_sort), feM_sort)[1]
+		r_fresh = solve_residuals!(copy(y_sort), fes_sort, new_weights_sort)[1]
+		@test r_reused ≈ r_fresh atol = 1e-8
+
+		for method in filter(!=(:cpu), method_s)
+			cpu_bucket_r = solve_residuals!(copy(x_gpu), fes_gpu, weights_gpu; double_precision = false)[1]
+			gpu_bucket_r = solve_residuals!(copy(x_gpu), fes_gpu, weights_gpu; method = method, double_precision = false)[1]
+			@test gpu_bucket_r ≈ cpu_bucket_r atol = atol_gpu rtol = rtol_gpu
+
+			id_owner_gpu = mod1.(37 .* (1:n_gpu) .+ 11, 1024)
+			fes_owner_gpu = [FixedEffect(p1_gpu), FixedEffect(id_owner_gpu)]
+			cpu_owner_r = solve_residuals!(copy(x_gpu), fes_owner_gpu, weights_gpu; double_precision = false)[1]
+			gpu_owner_r = solve_residuals!(copy(x_gpu), fes_owner_gpu, weights_gpu; method = method, double_precision = false)[1]
+			@test gpu_owner_r ≈ cpu_owner_r atol = atol_gpu rtol = rtol_gpu
+
+			# update_weights! rebuilds the device plan from the stored host plan
+			feM_gpu = FixedEffects.AbstractFixedEffectSolver{Float32}(fes_gpu, weights_gpu, Val{method})
+			new_weights_gpu = Weights(1 .+ mod.(3 .* (1:n_gpu), 11) ./ 15)
+			FixedEffects.update_weights!(feM_gpu, new_weights_gpu)
+			gpu_reused_r = solve_residuals!(copy(x_gpu), feM_gpu; tol = 1e-6)[1]
+			gpu_fresh_r = solve_residuals!(copy(x_gpu), fes_gpu, new_weights_gpu; method = method, double_precision = false)[1]
+			@test gpu_reused_r ≈ gpu_fresh_r atol = atol_gpu rtol = rtol_gpu
+		end
+	finally
+		FixedEffects._SORT_TILE_BYTES[] = old_sort_tile
+	end
+end
+
 
 fe = FixedEffect([1, 2])
 @test_throws "FixedEffects must have the same length as y" ỹ = solve_residuals!(ones(100), [fe])

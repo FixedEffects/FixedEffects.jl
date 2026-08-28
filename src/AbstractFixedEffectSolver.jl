@@ -63,7 +63,7 @@ function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSol
 	if length(feM.m.plan.blocks) == 1
 		mul!(feM.x, feM.m', feM.b, 1, 0)
 	else
-		_, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
+		_, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar, feM.g; atol = tol, btol = tol, maxiter = maxiter)
 		iter, converged = ch.mvps, ch.isconverged
 	end
 	converged || @warn "solve_residuals! did not converge within maxiter LSMR iterations; returned values may be inaccurate." iterations=iter maxiter tol
@@ -163,7 +163,7 @@ function solve_coefficients!(r::AbstractVector, feM::AbstractFixedEffectSolver{T
 		feM.b .*= sqrt.(feM.weights)
 	end
 	fill!(feM.x, zero(T))
-	_, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar; atol = tol, btol = tol, maxiter = maxiter)
+	_, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar, feM.g; atol = tol, btol = tol, maxiter = maxiter)
 	ch.isconverged || @warn "solve_coefficients! did not converge within maxiter LSMR iterations; returned values may be inaccurate." iterations=ch.mvps maxiter tol
 	recover_coefficients(feM, eltype(r)), ch.mvps, ch.isconverged
 end

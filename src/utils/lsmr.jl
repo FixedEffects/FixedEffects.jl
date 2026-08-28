@@ -65,8 +65,9 @@ _norm2(x) = norm(x)
 ## norm of the new u and the gather A'u are accumulated in the same loop that
 ## builds it, which is valid because the gather is linear: A'(u/β) = (A'u)/β.
 ## In exact arithmetic the iterates are identical to textbook LSMR.
-## v, h, hbar are storage arrays of length size(A, 2)
-function lsmr!(x, A, b, v, h, hbar;
+## v, h, hbar, g are storage arrays of length size(A, 2); g receives A'u
+## each iteration
+function lsmr!(x, A, b, v, h, hbar, g;
     atol::Number = 1e-6, btol::Number = 1e-6, conlim::Number = 1e8,
     maxiter::Integer = max(size(A,1), size(A,2)), λ::Number = 0)
 
@@ -78,6 +79,7 @@ function lsmr!(x, A, b, v, h, hbar;
     length(v) == n || error("v has length $(length(v)) but should have length $n")
     length(h) == n || error("h has length $(length(h)) but should have length $n")
     length(hbar) == n || error("hbar has length $(length(hbar)) but should have length $n")
+    length(g) == n || error("g has length $(length(g)) but should have length $n")
     length(b) == m || error("b has length $(length(b)) but should have length $m")
 
     T = Base.promote_op(/, eltype(b), eltype(A))
@@ -85,7 +87,6 @@ function lsmr!(x, A, b, v, h, hbar;
     conlim > 0 ? ctol = convert(Tr, inv(conlim)) : ctol = zero(Tr)
     # form the first vectors u and v (satisfy  β*u = b,  α*v = A'u)
     u = b
-    g = similar(v)   # workspace receiving A'u each iteration
     β = _norm2(u)
     α = zero(Tr)
     if β > 0
