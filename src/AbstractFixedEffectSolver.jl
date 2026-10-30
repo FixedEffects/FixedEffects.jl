@@ -62,12 +62,25 @@ function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSol
 	iter, converged = 0, true
 	if length(feM.m.plan.blocks) == 1
 		mul!(feM.x, feM.m', feM.b, 1, 0)
+		mul!(feM.r, feM.m, feM.x, -1, 1)
 	else
-		_, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar, feM.g; atol = tol, btol = tol, maxiter = maxiter)
-		iter, converged = ch.mvps, ch.isconverged
+		# lsmr! stops relative to the norm of its right-hand side. When the fixed effects explain
+		# most of that norm (e.g. a variable with a large mean), this leaves an error that is large
+		# relative to the residual, so solve again on the residual.
+		size0 = sizeb = norm(feM.b)
+		while true
+			_, ch = lsmr!(feM.x, feM.m, feM.b, feM.v, feM.h, feM.hbar, feM.g; atol = tol, btol = tol, maxiter = maxiter - iter)
+			iter += ch.mvps
+			converged = ch.isconverged
+			mul!(feM.r, feM.m, feM.x, -1, 1)
+			sizer = norm(feM.r)
+			(converged && iter < maxiter && sizer < sqrt(tol) * sizeb && sizer > 100 * eps(T) * size0) || break
+			sizeb = sizer
+			copyto!(feM.b, feM.r)
+			fill!(feM.x, zero(T))
+		end
 	end
 	converged || @warn "solve_residuals! did not converge within maxiter LSMR iterations; returned values may be inaccurate." iterations=iter maxiter tol
-	mul!(feM.r, feM.m, feM.x, -1, 1)
 	if !(feM.weights isa UnitWeights)
 		feM.r ./=  sqrt.(feM.weights)
 	end

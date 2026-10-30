@@ -1,3 +1,4 @@
+using Random
 using LinearAlgebra
 
 p1 = repeat(1:5, inner = 2)
@@ -20,6 +21,21 @@ r_ols =  [-0.2015993617092453,  0.2015993617092464, -0.2015993617092463,  0.2015
 @test convz
 @test iterz == 0
 @test all(iszero, rz)
+
+@testset "residuals do not depend on the mean of the variable" begin
+	rng_mean = MersenneTwister(1)
+	n_mean = 2000
+	fes_mean = [FixedEffect(rand(rng_mean, 1:100, n_mean)), FixedEffect(rand(rng_mean, 1:100, n_mean))]
+	x_mean = randn(rng_mean, n_mean)
+	r0 = solve_residuals!(copy(x_mean), fes_mean; tol = 1e-6)[1]
+	for m in (1e3, 1e6, 1e9)
+		r1 = solve_residuals!(x_mean .+ m, fes_mean; tol = 1e-6)[1]
+		@test norm(r1 - r0) < 2e-3 * norm(r0)
+	end
+	# a variable explained by the fixed effects
+	rfe = solve_residuals!(1e6 .+ fes_mean[1].refs .+ fes_mean[2].refs .* 1.0, fes_mean; tol = 1e-6)[1]
+	@test norm(rfe) < 1e-6 * sqrt(n_mean)
+end
 
 @testset "maxiter semantics" begin
 	(r0, iter0, conv0) = @test_logs (:warn, r"solve_residuals!") solve_residuals!(deepcopy(x), fes; maxiter = 0)
