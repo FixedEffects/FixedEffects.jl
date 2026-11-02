@@ -21,6 +21,16 @@ r_ols =  [-0.2015993617092453,  0.2015993617092464, -0.2015993617092463,  0.2015
 @test iterz == 0
 @test all(iszero, rz)
 
+@testset "Inferred bidiagonalization norm" begin
+	for T in (Float32, Float64)
+		solver = FixedEffects.AbstractFixedEffectSolver{T}(fes, uweights(T, length(x)), Val{:cpu})
+		u = T.(x)
+		fill!(solver.v, one(T))
+		@test (@inferred FixedEffects.bidiag_forward!(
+			u, solver.g, solver.m, solver.v, zero(T))) isa T
+	end
+end
+
 @testset "maxiter semantics" begin
 	(r0, iter0, conv0) = @test_logs (:warn, r"solve_residuals!") solve_residuals!(deepcopy(x), fes; maxiter = 0)
 	@test iter0 == 0

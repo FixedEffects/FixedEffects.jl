@@ -324,7 +324,8 @@ function bidiag_forward!(u::Vector{T}, g::FixedEffectCoefficients, fem::FixedEff
 		# serial: everything in one pass, gathers accumulated directly into g
 		s = _bidiag_chunk!(u, gs, blocks, qrowss, vs, T(c), eachindex(u))
 	end
-	return T(sqrt(s))
+	# The asserted norm type prevents boxing in LSMR's scalar recurrences.
+	return T(sqrt(s))::T
 end
 
 # u[i] ← c * u[i] + Σ_blocks fit_i; accumulates each block's gather into
