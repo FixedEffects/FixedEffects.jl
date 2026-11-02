@@ -43,6 +43,19 @@ end
 	@test_throws ArgumentError solve_coefficients!(deepcopy(x), fes; maxiter = -1)
 end
 
+@testset "default tol is the same for both entry points" begin
+	n = 2_000
+	pid = [mod(i^2, 97) + 1 for i in 1:n]
+	fid = [div(pid[i], 8) + 1 + mod(i, 3) for i in 1:n]
+	fes_tol = [FixedEffect(pid), FixedEffect(fid)]
+	y_tol = [sin(i) for i in 1:n]
+	for (T, double_precision) in ((Float64, true), (Float32, false))
+		feM_tol = FixedEffects.AbstractFixedEffectSolver{T}(fes_tol, uweights(T, n), Val{:cpu})
+		@test solve_residuals!(copy(y_tol), feM_tol)[2] == solve_residuals!(copy(y_tol), fes_tol; double_precision = double_precision)[2]
+		@test solve_coefficients!(copy(y_tol), feM_tol)[2] == solve_coefficients!(copy(y_tol), fes_tol; double_precision = double_precision)[2]
+	end
+end
+
 # PooledArrays
 (r, iter, conv) = solve_residuals!(deepcopy(x), [FixedEffect(PooledArray(p1)), FixedEffect(PooledArray(p2))])
 @test r ≈ r_ols

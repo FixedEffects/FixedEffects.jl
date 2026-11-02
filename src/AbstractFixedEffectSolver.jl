@@ -50,7 +50,7 @@ function solve_residuals!(y::AbstractVector{<: Real}, fes::AbstractVector{<: Fix
 	solve_residuals!(y, feM; maxiter = maxiter, tol = tol)
 end
 
-function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSolver{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
+function solve_residuals!(r::AbstractVector{<:Real}, feM::AbstractFixedEffectSolver{T}; tol::Real = T === Float64 ? 1e-8 : 1e-6, maxiter::Integer = 100_000) where {T}
 	maxiter >= 0 || throw(ArgumentError("maxiter must be non-negative"))
 	# One cannot copy view of Vector (r) on GPU, so first collect the vector
 	copy_internal!(feM, :r, r)
@@ -155,7 +155,7 @@ function solve_coefficients!(y::AbstractVector{<: Number}, fes::AbstractVector{<
 	solve_coefficients!(y, feM; maxiter = maxiter, tol = tol)
 end
 
-function solve_coefficients!(r::AbstractVector, feM::AbstractFixedEffectSolver{T}; tol::Real = sqrt(eps(T)), maxiter::Integer = 100_000) where {T}
+function solve_coefficients!(r::AbstractVector, feM::AbstractFixedEffectSolver{T}; tol::Real = T === Float64 ? 1e-8 : 1e-6, maxiter::Integer = 100_000) where {T}
 	maxiter >= 0 || throw(ArgumentError("maxiter must be non-negative"))
 	# One cannot copy view of Vector (r) on GPU, so first collect the vector
 	copy_internal!(feM, :b, r)
