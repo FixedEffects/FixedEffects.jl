@@ -220,6 +220,29 @@ end
 	end
 end
 
+if Metal.functional()
+	@testset "Metal gather strategy" begin
+		ext = Base.get_extension(FixedEffects, :MetalExt)
+		n = 100_000
+		scattered = mod1.(7919 .* (1:n), 20_000)
+		clustered = sort(scattered)
+		skewed = copy(scattered)
+		skewed[1:2:n] .= 1
+		few = mod1.(1:n, 4)
+		@test ext._gather_strategy(scattered, 20_000) isa ext.AtomicGather
+		@test ext._gather_strategy(clustered, 20_000).width == 16
+		@test ext._gather_strategy(skewed, 20_000).width == 64
+		@test ext._gather_strategy(few, 4).width > 64
+		y_gather = sin.(1:n)
+		for refs in (scattered, clustered, skewed, few)
+			fes_gather = [FixedEffect(refs), FixedEffect(mod1.(1:n, 7))]
+			r_cpu = solve_residuals!(copy(y_gather), fes_gather; double_precision = false)[1]
+			r_metal = solve_residuals!(copy(y_gather), fes_gather; method = :Metal, double_precision = false)[1]
+			@test r_metal ≈ r_cpu rtol = 1e-3
+		end
+	end
+end
+
 
 fe = FixedEffect([1, 2])
 @test_throws "FixedEffects must have the same length as y" ỹ = solve_residuals!(ones(100), [fe])

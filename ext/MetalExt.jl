@@ -28,11 +28,6 @@ using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, Linea
 _mtl(T::Type, w::UnitWeights) = Metal.ones(T, length(w))
 _mtl(T::Type, w::AbstractVector) = MtlVector{T}(convert(Vector{T}, w))
 
-function _metal_threadgroup_width()
-	width = Int(device().maxThreadsPerThreadgroup.width)
-	return prevpow(2, width)
-end
-
 # Largest power-of-two threadgroup width the compiled pipeline allows: kernels
 # with heavy register use can cap below the device width.
 _pipeline_width(kernel) = prevpow(2, Int(kernel.pipeline.maxTotalThreadsPerThreadgroup))
@@ -51,12 +46,13 @@ function _sized_kernel(build, nthreads::Int)
 	return kernel, nthreads
 end
 
-# Per-block plan for the adjoint gather (A'u), chosen once at construction:
-# bucketize (one threadgroup per group) for low cardinality, else atomic adds.
+# Per-block plan for the adjoint gather (A'u), chosen once at construction by
+# _gather_strategy: atomic adds in row order, or one threadgroup per group.
 struct AtomicGather end
 struct BucketGather{V<:AbstractVector}
 	perm::V
 	offsets::V
+	width::Int
 end
 
 mutable struct FixedEffectLinearMapMetal{T,P<:AbsorptionPlan} <: AbstractFixedEffectLinearMap{T}
@@ -76,13 +72,30 @@ function FixedEffectLinearMapMetal{T}(fes::Vector{<:FixedEffect}, weights::Abstr
 	return FixedEffectLinearMapMetal{T,typeof(plan)}(fes, plan, gathers)
 end
 
+# Atomic adds are the fastest gather while threads rarely update the same
+# coefficient at once, but they become orders of magnitude slower when they do,
+# which happens with a large group or with rows clustered by group. They are
+# used only when neither applies. Otherwise each group gets a threadgroup, whose
+# width trades off idle threads (nlevels * width) against the time spent in the
+# largest group (nmax / width). Widths are powers of 4 to limit the number of
+# kernels to compile. The constants were calibrated on an M1 Max.
 function _gather_strategy(refs::AbstractVector{<:Integer}, nlevels::Int)
-	if nlevels < min(100_000, div(length(refs), 16))
-		_, offsets, perm = _group_permutation(refs, nlevels)
-		return BucketGather(MtlVector{Int}(perm), MtlVector{Int}(offsets))
-	else
+	counts = zeros(Int, nlevels)
+	nadjacent = 0
+	previous = zero(eltype(refs))
+	@inbounds for g in refs
+		counts[g] += 1
+		nadjacent += g == previous
+		previous = g
+	end
+	nmax = maximum(counts; init = 0)
+	if nmax <= div(length(refs), 20_000) && 2 * nadjacent <= length(refs)
 		return AtomicGather()
 	end
+	device_width = prevpow(2, Int(device().maxThreadsPerThreadgroup.width))
+	width = prevpow(4, clamp(round(Int, 90 * sqrt(nmax / nlevels)), 16, device_width))
+	_, offsets, perm = _group_permutation(refs, nlevels)
+	return BucketGather(MtlVector{Int}(perm), MtlVector{Int}(offsets), width)
 end
 
 function _mtl_plan(::Type{T}, fes::Vector{<:FixedEffect}, weights::AbstractWeights) where {T}
@@ -150,7 +163,7 @@ end
 function _gather_block!(coef_block::MtlMatrix, refs::MtlVector, qrows::MtlMatrix,
 		y::MtlVector, α::Number, gather::BucketGather)
 	k = size(coef_block, 1)
-	kernel, nthreads = _sized_kernel(_metal_threadgroup_width()) do nt
+	kernel, nthreads = _sized_kernel(gather.width) do nt
 		@metal launch=false gather_block_kernel_bin!(coef_block, α, y, qrows, gather.perm, gather.offsets, Val(nt), k)
 	end
 	kernel(coef_block, α, y, qrows, gather.perm, gather.offsets, Val(nthreads), k;

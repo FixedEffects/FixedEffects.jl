@@ -103,33 +103,33 @@ if isdefined(Main, :Metal) && Metal.functional()
 
     feM = AbstractFixedEffectSolver{Float32}(fes_simple, uweights(length(cols_simple[1])), Val{:Metal})
     println("Simple (N=10M, 100k×100), 6 columns, first run:")
-    @time solve_residuals!([copy(c) for c in cols_simple], feM; progress_bar = false, tol = 1e-6)   # ~4.2 s
+    @time solve_residuals!([copy(c) for c in cols_simple], feM; progress_bar = false, tol = 1e-6)   # ~4.3 s
     println("Simple (N=10M, 100k×100), 6 columns, second run:")
     @time solve_residuals!([copy(c) for c in cols_simple], feM; progress_bar = false, tol = 1e-6)   # ~0.34 s
 
     feM = AbstractFixedEffectSolver{Float32}(fes_hard, uweights(N), Val{:Metal})
     println("Hard (N=800k, 40k×5k), 6 columns, first run:")
-    @time solve_residuals!([copy(c) for c in cols_hard], feM; progress_bar = false, tol = 1e-6)   # ~13 s
+    @time solve_residuals!([copy(c) for c in cols_hard], feM; progress_bar = false, tol = 1e-6)   # ~2.8 s
     println("Hard (N=800k, 40k×5k), 6 columns, second run:")
-    @time solve_residuals!([copy(c) for c in cols_hard], feM; progress_bar = false, tol = 1e-6)   # ~9.2 s
+    @time solve_residuals!([copy(c) for c in cols_hard], feM; progress_bar = false, tol = 1e-6)   # ~2.5 s
 
     feM = AbstractFixedEffectSolver{Float32}(fes_hard_interact, uweights(N), Val{:Metal})
     println("Hard (N=800k, interacted), 6 columns, first run:")
-    @time solve_residuals!([copy(c) for c in cols_hard], feM; progress_bar = false, tol = 1e-6)   # ~17 s
+    @time solve_residuals!([copy(c) for c in cols_hard], feM; progress_bar = false, tol = 1e-6)   # ~4.2 s
     println("Hard (N=800k, interacted), 6 columns, second run:")
-    @time solve_residuals!([copy(c) for c in cols_hard], feM; progress_bar = false, tol = 1e-6)   # ~22 s
+    @time solve_residuals!([copy(c) for c in cols_hard], feM; progress_bar = false, tol = 1e-6)   # ~3.9 s
 
     feM = AbstractFixedEffectSolver{Float32}(fes_hard_3way, uweights(N), Val{:Metal})
     println("Hard 3-way (N=800k, 40k×5k×36), 6 columns, first run:")
-    @time solve_residuals!([copy(c) for c in cols_hard], feM; progress_bar = false, tol = 1e-6)   # ~8.8 s
+    @time solve_residuals!([copy(c) for c in cols_hard], feM; progress_bar = false, tol = 1e-6)   # ~3.6 s
     println("Hard 3-way (N=800k, 40k×5k×36), 6 columns, second run:")
-    @time solve_residuals!([copy(c) for c in cols_hard], feM; progress_bar = false, tol = 1e-6)   # ~12 s
+    @time solve_residuals!([copy(c) for c in cols_hard], feM; progress_bar = false, tol = 1e-6)   # ~3.5 s
 
     feM = AbstractFixedEffectSolver{Float32}(fes_large, uweights(N_large), Val{:Metal})
     println("Large (N=10M, 500k×50k, sorted layout), 6 columns, first run:")
-    @time solve_residuals!([copy(c) for c in cols_large], feM; progress_bar = false, tol = 1e-6)   # ~2.9 s
+    @time solve_residuals!([copy(c) for c in cols_large], feM; progress_bar = false, tol = 1e-6)   # ~1.5 s
     println("Large (N=10M, 500k×50k, sorted layout), 6 columns, second run:")
-    @time solve_residuals!([copy(c) for c in cols_large], feM; progress_bar = false, tol = 1e-6)   # ~2.8 s
+    @time solve_residuals!([copy(c) for c in cols_large], feM; progress_bar = false, tol = 1e-6)   # ~1.3 s
 end
 
 ##############################################################################
