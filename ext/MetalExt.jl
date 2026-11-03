@@ -107,43 +107,83 @@ function _mtl_plan(::Type{T}, fes::Vector{<:FixedEffect}, weights::AbstractWeigh
 end
 
 ## 1b) FixedEffectLinearMapMetal mul!
+##
+## One kernel computes u ← c u + α Σ_blocks A_b v_b for all blocks at once and
+## accumulates ‖u‖² on the fly: one partial per threadgroup, summed pairwise on
+## the device — Metal has no Float64 atomics, and the pairwise sum avoids the
+## drift of chaining Float32 atomic adds (see the _norm2 note in
+## src/utils/lsmr.jl). Blocks are passed as tuples of device arrays so the
+## kernel unrolls across them. mul! discards the norm; bidiag_forward! uses it.
 
 ## Implement right multiplication
 function LinearAlgebra.mul!(y::MtlVector, fem::FixedEffectLinearMapMetal{T},
 		fecoefs::FixedEffectCoefficients, α::Number, β::Number) where {T}
-	if iszero(β)
-		fill!(y, zero(T))
-		β = one(β)
-	end
-	for (coef_block, block, qrows) in zip(fecoefs.x, fem.plan.blocks, fem.plan.qrows)
-		_scatter_block!(y, block.refs, qrows, coef_block, α, β)
-		β = one(β)
-	end
+	# β = 0 must ignore the contents of y, which may be NaN
+	iszero(β) && fill!(y, zero(T))
+	_scatter!(y, fem, fecoefs, α, β)
 	return y
 end
 
-function _scatter_block!(y::MtlVector, refs::MtlVector, qrows::MtlMatrix,
-		coef_block::MtlMatrix, α::Number, β::Number)
-	kernel = @metal launch=false scatter_block_kernel!(y, refs, qrows, coef_block, α, β, size(coef_block, 1))
-	nthreads = _pipeline_width(kernel)
-	kernel(y, refs, qrows, coef_block, α, β, size(coef_block, 1);
-		threads = nthreads, groups = cld(length(y), nthreads))
-	return y
+# u ← c u + α A v; returns the per-threadgroup partial sums of u².
+function _scatter!(u::MtlVector{T}, fem::FixedEffectLinearMapMetal{T},
+		v::FixedEffectCoefficients, α::Number, c::Number) where {T}
+	refss = map(block -> block.refs, Tuple(fem.plan.blocks))
+	qrowss = Tuple(fem.plan.qrows)
+	vs = Tuple(v.x)
+	# fixed 256-thread groups, safely below any pipeline cap for this kernel
+	nthreads = 256
+	nblocks = cld(length(u), nthreads)
+	partials = MtlVector{T}(undef, nblocks)
+	@metal threads=nthreads groups=nblocks scatter_kernel!(u, refss, qrowss, vs, T(α), T(c),
+		partials, Val(nthreads))
+	return partials
 end
 
-function scatter_block_kernel!(y, refs, qrows, coef_block, α, β, k)
+function scatter_kernel!(u, refss, qrowss, vs, α, c, partials, ::Val{NT}) where {NT}
+	T = eltype(u)
+	gid = Int(threadgroup_position_in_grid().x)
+	tid = Int(thread_position_in_threadgroup().x)
+	nt = Int(threads_per_threadgroup().x)
+	shared = Metal.MtlThreadGroupArray(T, NT)
+	acc = zero(T)
 	i = thread_position_in_grid_1d()
-	if i <= length(y)
+	if i <= length(u)
 		@inbounds begin
-			g = refs[i]
-			fit = zero(eltype(y))
-			for c in 1:k
-				fit += coef_block[c, g] * qrows[c, i]
-			end
-			y[i] = β * y[i] + α * fit
+			ui = c * u[i] + α * _device_fit(refss, qrowss, vs, i)
+			u[i] = ui
+			acc += ui * ui
 		end
 	end
+	@inbounds shared[tid] = acc
+	Metal.threadgroup_barrier(Metal.MemoryFlagThreadGroup)
+
+	offset = nt ÷ 2
+	while offset > 0
+		if tid <= offset
+			@inbounds shared[tid] += shared[tid + offset]
+		end
+		Metal.threadgroup_barrier(Metal.MemoryFlagThreadGroup)
+		offset ÷= 2
+	end
+
+	if tid == 1
+		@inbounds partials[gid] = shared[1]
+	end
 	return nothing
+end
+
+# Recursion over the block tuples, as in the CPU kernels.
+@inline _device_fit(::Tuple{}, ::Tuple{}, ::Tuple{}, i) = false
+@inline function _device_fit(refss::Tuple, qrowss::Tuple, vs::Tuple, i)
+	refs = first(refss)
+	qrows = first(qrowss)
+	vcoef = first(vs)
+	@inbounds gr = refs[i]
+	fit = zero(eltype(qrows))
+	for col in 1:size(qrows, 1)
+		@inbounds fit += vcoef[col, gr] * qrows[col, i]
+	end
+	return fit + _device_fit(Base.tail(refss), Base.tail(qrowss), Base.tail(vs), i)
 end
 
 ## 1c) FixedEffectLinearMapMetal mul!, Adjoint
@@ -238,27 +278,15 @@ end
 ##
 ## 1d) Fused bidiagonalization step (single-pass LSMR iterations)
 ##
-## One kernel computes u ← Σ_blocks A_b v_b + c u and accumulates ‖u‖² on the
-## fly: one partial per threadgroup, summed pairwise on the device — Metal has
-## no Float64 atomics, and the pairwise sum avoids the drift of chaining
-## Float32 atomic adds (see the _norm2 note in src/utils/lsmr.jl). The gathers
-## then run through their per-block strategies on the raw u. Blocks are passed
-## as tuples of device arrays so the kernel unrolls across them.
+## The scatter kernel of 1b computes u ← A v + c u and ‖u‖² in one pass over
+## the rows; the gathers then run through their per-block strategies on the
+## raw u.
 ##
 ##############################################################################
 
 function FixedEffects.bidiag_forward!(u::MtlVector{T}, g::FixedEffectCoefficients,
 		fem::FixedEffectLinearMapMetal{T}, v::FixedEffectCoefficients, c::Number) where {T}
-	blocks = Tuple(fem.plan.blocks)
-	refss = map(block -> block.refs, blocks)
-	qrowss = Tuple(fem.plan.qrows)
-	vs = Tuple(v.x)
-	# fixed 256-thread groups, safely below any pipeline cap for this kernel
-	nthreads = 256
-	nblocks = cld(length(u), nthreads)
-	partials = MtlVector{T}(undef, nblocks)
-	@metal threads=nthreads groups=nblocks bidiag_scatter_kernel!(u, refss, qrowss, vs, T(c),
-		partials, Val(nthreads))
+	partials = _scatter!(u, fem, v, one(T), c)
 	fill!(g, zero(T))
 	for (coef_block, block, qrows, gather) in zip(g.x, fem.plan.blocks, fem.plan.qrows, fem.gathers)
 		_gather_block!(coef_block, block.refs, qrows, u, one(T), gather)
@@ -266,53 +294,6 @@ function FixedEffects.bidiag_forward!(u::MtlVector{T}, g::FixedEffectCoefficient
 	# every kernel of this iteration is queued in order; the scalar read of the
 	# device sum below is the one host wait per iteration
 	return sqrt(sum(partials))
-end
-
-function bidiag_scatter_kernel!(u, refss, qrowss, vs, c, partials, ::Val{NT}) where {NT}
-	T = eltype(u)
-	gid = Int(threadgroup_position_in_grid().x)
-	tid = Int(thread_position_in_threadgroup().x)
-	nt = Int(threads_per_threadgroup().x)
-	shared = Metal.MtlThreadGroupArray(T, NT)
-	acc = zero(T)
-	i = thread_position_in_grid_1d()
-	if i <= length(u)
-		@inbounds begin
-			ui = c * u[i] + _device_fit(refss, qrowss, vs, i)
-			u[i] = ui
-			acc += ui * ui
-		end
-	end
-	@inbounds shared[tid] = acc
-	Metal.threadgroup_barrier(Metal.MemoryFlagThreadGroup)
-
-	offset = nt ÷ 2
-	while offset > 0
-		if tid <= offset
-			@inbounds shared[tid] += shared[tid + offset]
-		end
-		Metal.threadgroup_barrier(Metal.MemoryFlagThreadGroup)
-		offset ÷= 2
-	end
-
-	if tid == 1
-		@inbounds partials[gid] = shared[1]
-	end
-	return nothing
-end
-
-# Recursion over the block tuples, as in the CPU kernels.
-@inline _device_fit(::Tuple{}, ::Tuple{}, ::Tuple{}, i) = false
-@inline function _device_fit(refss::Tuple, qrowss::Tuple, vs::Tuple, i)
-	refs = first(refss)
-	qrows = first(qrowss)
-	vcoef = first(vs)
-	@inbounds gr = refs[i]
-	fit = zero(eltype(qrows))
-	for col in 1:size(qrows, 1)
-		@inbounds fit += vcoef[col, gr] * qrows[col, i]
-	end
-	return fit + _device_fit(Base.tail(refss), Base.tail(qrowss), Base.tail(vs), i)
 end
 
 ##############################################################################
