@@ -1,7 +1,6 @@
 module CUDAExt
 using FixedEffects, CUDA
 using FixedEffects: FixedEffectCoefficients, AbstractWeights, UnitWeights, LinearAlgebra, Adjoint, mul!, rmul!, AbstractFixedEffectLinearMap, copy_internal!, AbsorptionPlan, AbsorbedBlock, _group_permutation, block_width
-CUDA.allowscalar(false)
 
 ##############################################################################
 ##
