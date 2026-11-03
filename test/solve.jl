@@ -43,6 +43,19 @@ end
 	@test_throws ArgumentError solve_coefficients!(deepcopy(x), fes; maxiter = -1)
 end
 
+@testset "default tol is the same for both entry points" begin
+	n = 2_000
+	pid = [mod(i^2, 97) + 1 for i in 1:n]
+	fid = [div(pid[i], 8) + 1 + mod(i, 3) for i in 1:n]
+	fes_tol = [FixedEffect(pid), FixedEffect(fid)]
+	y_tol = [sin(i) for i in 1:n]
+	for (T, double_precision) in ((Float64, true), (Float32, false))
+		feM_tol = FixedEffects.AbstractFixedEffectSolver{T}(fes_tol, uweights(T, n), Val{:cpu})
+		@test solve_residuals!(copy(y_tol), feM_tol)[2] == solve_residuals!(copy(y_tol), fes_tol; double_precision = double_precision)[2]
+		@test solve_coefficients!(copy(y_tol), feM_tol)[2] == solve_coefficients!(copy(y_tol), fes_tol; double_precision = double_precision)[2]
+	end
+end
+
 # PooledArrays
 (r, iter, conv) = solve_residuals!(deepcopy(x), [FixedEffect(PooledArray(p1)), FixedEffect(PooledArray(p2))])
 @test r ≈ r_ols
@@ -204,6 +217,29 @@ end
 		end
 	finally
 		FixedEffects._SORT_TILE_BYTES[] = old_sort_tile
+	end
+end
+
+if Metal.functional()
+	@testset "Metal gather strategy" begin
+		ext = Base.get_extension(FixedEffects, :MetalExt)
+		n = 100_000
+		scattered = mod1.(7919 .* (1:n), 20_000)
+		clustered = sort(scattered)
+		skewed = copy(scattered)
+		skewed[1:2:n] .= 1
+		few = mod1.(1:n, 4)
+		@test ext._gather_strategy(scattered, 20_000) isa ext.AtomicGather
+		@test ext._gather_strategy(clustered, 20_000).width == 16
+		@test ext._gather_strategy(skewed, 20_000).width == 64
+		@test ext._gather_strategy(few, 4).width > 64
+		y_gather = sin.(1:n)
+		for refs in (scattered, clustered, skewed, few)
+			fes_gather = [FixedEffect(refs), FixedEffect(mod1.(1:n, 7))]
+			r_cpu = solve_residuals!(copy(y_gather), fes_gather; double_precision = false)[1]
+			r_metal = solve_residuals!(copy(y_gather), fes_gather; method = :Metal, double_precision = false)[1]
+			@test r_metal ≈ r_cpu rtol = 1e-3
+		end
 	end
 end
 
