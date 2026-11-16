@@ -34,22 +34,29 @@ function showprogress(io::IO, p::MiniProgressBar)
     p.has_shown = true
     n_filled = ceil(Int, p.width * perc / 100)
     n_left = p.width - n_filled
-    print(io, " "^p.indent)
-    printstyled(io, p.header, color=p.color, bold=true)
-    print(io, " [")
-    print(io, "="^n_filled, ">")
-    print(io, " "^n_left, "]  ", )
+    # Render into a buffer, then write it with invokelatest, which is not
+    # inferred through: printing to stdout, which is only known to be an IO,
+    # compiles calls that packages adding IO methods (e.g. FilePathsBase)
+    # invalidate, along with solve_residuals! and its callers
+    buf = IOContext(IOBuffer(), :color => get(io, :color, false))
+    print(buf, " "^p.indent)
+    printstyled(buf, p.header, color=p.color, bold=true)
+    print(buf, " [")
+    print(buf, "="^n_filled, ">")
+    print(buf, " "^n_left, "]  ", )
     if p.percentage
-        @printf io "%2.1f %%" perc
+        @printf buf "%2.1f %%" perc
     else
-        print(io, p.current, "/",  p.max)
+        print(buf, p.current, "/",  p.max)
     end
-    print(io, "\r")
+    print(buf, "\r")
+    Base.invokelatest(write, io, take!(buf.io))
+    return nothing
 end
 
-function end_progress(io, p::MiniProgressBar)
+function end_progress(io::IO, p::MiniProgressBar)
     ansi_enablecursor = "\e[?25h"
     ansi_clearline = "\e[2K"
-    print(io, ansi_enablecursor)
-    print(io, ansi_clearline)
+    Base.invokelatest(print, io, ansi_enablecursor * ansi_clearline)
+    return nothing
 end
